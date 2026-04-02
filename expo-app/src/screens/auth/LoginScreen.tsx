@@ -18,7 +18,7 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
-  const { login } = useAuth();
+  const { demoLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -32,9 +32,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     async (role: UserRole) => {
       try {
         setIsLoading(true);
-        // Create a mock token for demo purposes
-        const mockToken = `demo-token-${role}-${Date.now()}`;
-        await login(mockToken);
+        await demoLogin(role);
       } catch (error) {
         Alert.alert(
           'Login Failed',
@@ -44,7 +42,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         setIsLoading(false);
       }
     },
-    [login]
+    [demoLogin]
   );
 
   const demoRoles: Array<{ role: UserRole; label: string; color: string }> = [

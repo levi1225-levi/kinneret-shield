@@ -27,20 +27,22 @@ interface ProfileScreenProps {
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, isDemoMode } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     try {
       setIsRefreshing(true);
-      await refreshUser();
+      if (!isDemoMode) {
+        await refreshUser();
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to refresh user information');
     } finally {
       setIsRefreshing(false);
     }
-  }, [refreshUser]);
+  }, [refreshUser, isDemoMode]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(

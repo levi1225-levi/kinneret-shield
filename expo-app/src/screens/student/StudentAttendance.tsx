@@ -21,11 +21,12 @@ import {
 import { attendanceAPI } from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { AttendanceRecord } from '../../types';
+import { mockAPI } from '../../utils/mockData';
 
 type DateFilter = 'week' | 'month' | 'all';
 
 export const StudentAttendance: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,10 +67,12 @@ export const StudentAttendance: React.FC = () => {
         if (!user?.id) return;
 
         const range = getDateRange(dateFilter);
-        const data = await attendanceAPI.getStudentAttendance(user.id, {
-          page: pageNum,
-          limit: 20,
-        });
+        const data = isDemoMode
+          ? mockAPI.getStudentAttendance(user.id, pageNum, 20)
+          : await attendanceAPI.getStudentAttendance(user.id, {
+              page: pageNum,
+              limit: 20,
+            });
 
         // Filter by date range
         const filteredRecords = data.items.filter((record) => {
@@ -100,7 +103,7 @@ export const StudentAttendance: React.FC = () => {
         }
       }
     },
-    [user?.id, dateFilter, getDateRange, records]
+    [user?.id, dateFilter, getDateRange, records, isDemoMode]
   );
 
   useEffect(() => {

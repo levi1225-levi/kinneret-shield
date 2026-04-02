@@ -19,6 +19,8 @@ import {
   getSeverityColor,
 } from '../../utils/theme';
 import { alertsAPI } from '../../api';
+import { mockAPI, MOCK_ALERTS } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { Alert as AlertType, AlertSeverity } from '../../types';
 import { Header, FilterChip, EmptyState, Card } from '../../components';
 
@@ -29,6 +31,7 @@ interface AlertsScreenProps {
 type SeverityFilter = 'all' | AlertSeverity;
 
 export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
+  const { isDemoMode } = useAuth();
   const [alerts, setAlerts] = useState<AlertType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -50,10 +53,12 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
             ? { resolved: false }
             : { resolved: false, severity: selectedSeverity };
 
-        const response = await alertsAPI.getAlerts(filters, {
-          page: pageNum,
-          limit: 20,
-        });
+        const response = isDemoMode
+          ? await mockAPI.getAlerts()
+          : await alertsAPI.getAlerts(filters, {
+              page: pageNum,
+              limit: 20,
+            });
 
         if (append) {
           setAlerts((prev) => [...prev, ...response.items]);
@@ -72,7 +77,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
         setIsRefreshing(false);
       }
     },
-    [selectedSeverity]
+    [selectedSeverity, isDemoMode]
   );
 
   useEffect(() => {
@@ -93,16 +98,25 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
   const handleResolveAlert = useCallback(
     async (alert: AlertType) => {
       try {
-        const resolved = await alertsAPI.resolveAlert(alert.id);
-        setAlerts((prev) =>
-          prev.map((a) => (a.id === alert.id ? resolved : a))
-        );
+        if (isDemoMode) {
+          // In demo mode, just update local state
+          setAlerts((prev) =>
+            prev.map((a) =>
+              a.id === alert.id ? { ...a, resolved: true } : a
+            )
+          );
+        } else {
+          const resolved = await alertsAPI.resolveAlert(alert.id);
+          setAlerts((prev) =>
+            prev.map((a) => (a.id === alert.id ? resolved : a))
+          );
+        }
         Alert.alert('Success', 'Alert resolved');
       } catch (error) {
         Alert.alert('Error', 'Failed to resolve alert');
       }
     },
-    []
+    [isDemoMode]
   );
 
   const getAlertIcon = (type: string): string => {

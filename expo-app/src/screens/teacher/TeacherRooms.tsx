@@ -20,10 +20,13 @@ import {
   SearchBar,
 } from '../../components';
 import { roomsAPI, attendanceAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { Room, RoomOccupancy, AttendanceRecord } from '../../types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const TeacherRooms: React.FC = () => {
+  const { isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,10 +38,20 @@ export const TeacherRooms: React.FC = () => {
     try {
       setError(null);
 
-      const roomsData = await roomsAPI.getRooms({ page: 1, limit: 100 });
-      const roomsList = roomsData.items;
+      let roomsData;
+      let occupancyData;
 
-      const occupancyData = await roomsAPI.getAllOccupancies();
+      if (isDemoMode) {
+        // Use mock data in demo mode
+        roomsData = await mockAPI.getRooms(1, 100);
+        occupancyData = await mockAPI.getAllOccupancies();
+      } else {
+        // Use real API calls in normal mode
+        roomsData = await roomsAPI.getRooms({ page: 1, limit: 100 });
+        occupancyData = await roomsAPI.getAllOccupancies();
+      }
+
+      const roomsList = roomsData.items;
       const roomsWithOccupancy = roomsList.map((room) => {
         const occupancy = occupancyData.find((occ) => occ.roomId === room.id);
         return { ...room, occupancy };
@@ -51,7 +64,7 @@ export const TeacherRooms: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDemoMode]);
 
   useEffect(() => {
     fetchData();

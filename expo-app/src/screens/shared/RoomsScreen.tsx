@@ -18,16 +18,17 @@ import {
   Shadows,
 } from '../../utils/theme';
 import { roomsAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { Room } from '../../types';
 import { Header, SearchBar, EmptyState, Card } from '../../components';
-import { useAuth } from '../../context/AuthContext';
 
 interface RoomsScreenProps {
   navigation: any;
 }
 
 export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,10 +46,12 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
         const loader = pageNum === 1 ? setIsLoading : setIsLoadingMore;
         loader(true);
 
-        const response = await roomsAPI.getRooms({
-          page: pageNum,
-          limit: 20,
-        });
+        const response = isDemoMode
+          ? await mockAPI.getRooms()
+          : await roomsAPI.getRooms({
+              page: pageNum,
+              limit: 20,
+            });
 
         if (append) {
           setRooms((prev) => [...prev, ...response.items]);
@@ -67,7 +70,7 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
         setIsRefreshing(false);
       }
     },
-    []
+    [isDemoMode]
   );
 
   useEffect(() => {

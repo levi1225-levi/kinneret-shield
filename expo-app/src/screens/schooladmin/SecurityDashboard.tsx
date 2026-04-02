@@ -19,10 +19,13 @@ import {
   SectionHeader,
 } from '../../components';
 import { devicesAPI, alertsAPI, roomsAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { Device, Alert as AlertType, EmergencyEvent } from '../../types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const SecurityDashboard: React.FC = () => {
+  const { isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,32 +42,51 @@ export const SecurityDashboard: React.FC = () => {
     try {
       setError(null);
 
-      // Fetch devices
-      const devicesData = await devicesAPI.getDevices({ page: 1, limit: 100 });
-      setDevices(devicesData.items);
-      setTotalDevices(devicesData.total);
-      const online = devicesData.items.filter((d) => d.status === 'online').length;
-      setDevicesOnline(online);
+      if (isDemoMode) {
+        // Use mock data in demo mode
+        const devicesData = await mockAPI.getDevices(1, 100);
+        setDevices(devicesData.items);
+        setTotalDevices(devicesData.total);
+        const online = devicesData.items.filter((d) => d.status === 'online').length;
+        setDevicesOnline(online);
 
-      // Fetch active alerts
-      const alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 5 });
-      setAlerts(alertsData.items);
-      setActiveAlerts(alertsData.total);
+        const alertsData = await mockAPI.getAlerts(1, 5);
+        setAlerts(alertsData.items);
+        setActiveAlerts(alertsData.total);
 
-      // Check for active emergencies
-      const emergencies = await alertsAPI.getActiveEmergencies();
-      setEmergencyActive(emergencies.length > 0);
+        const occupancyData = await mockAPI.getAllOccupancies();
+        const totalOccupancy = occupancyData.reduce((sum: number, occ) => sum + occ.currentOccupancy, 0);
+        setBuildingOccupancy(totalOccupancy);
 
-      // Fetch building occupancy
-      const occupancyData = await roomsAPI.getAllOccupancies();
-      const totalOccupancy = occupancyData.reduce((sum, occ) => sum + occ.currentOccupancy, 0);
-      setBuildingOccupancy(totalOccupancy);
+        setEmergencyActive(false);
+      } else {
+        // Fetch devices
+        const devicesData = await devicesAPI.getDevices({ page: 1, limit: 100 });
+        setDevices(devicesData.items);
+        setTotalDevices(devicesData.total);
+        const online = devicesData.items.filter((d) => d.status === 'online').length;
+        setDevicesOnline(online);
+
+        // Fetch active alerts
+        const alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 5 });
+        setAlerts(alertsData.items);
+        setActiveAlerts(alertsData.total);
+
+        // Check for active emergencies
+        const emergencies = await alertsAPI.getActiveEmergencies();
+        setEmergencyActive(emergencies.length > 0);
+
+        // Fetch building occupancy
+        const occupancyData = await roomsAPI.getAllOccupancies();
+        const totalOccupancy = occupancyData.reduce((sum, occ) => sum + occ.currentOccupancy, 0);
+        setBuildingOccupancy(totalOccupancy);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDemoMode]);
 
   useEffect(() => {
     fetchData();
@@ -87,12 +109,16 @@ export const SecurityDashboard: React.FC = () => {
           onPress: async () => {
             try {
               setTriggeringEmergency(true);
-              await alertsAPI.initiateEmergency({
-                type: 'lockdown',
-                message: 'Emergency lockdown initiated',
-              });
-              setEmergencyActive(true);
-              Alert.alert('Success', 'Emergency lockdown initiated');
+              if (isDemoMode) {
+                Alert.alert('Demo mode', 'Emergency lockdown simulation initiated');
+              } else {
+                await alertsAPI.initiateEmergency({
+                  type: 'lockdown',
+                  message: 'Emergency lockdown initiated',
+                });
+                setEmergencyActive(true);
+                Alert.alert('Success', 'Emergency lockdown initiated');
+              }
             } catch (err) {
               Alert.alert('Error', 'Failed to trigger emergency');
             } finally {
@@ -106,12 +132,16 @@ export const SecurityDashboard: React.FC = () => {
           onPress: async () => {
             try {
               setTriggeringEmergency(true);
-              await alertsAPI.initiateEmergency({
-                type: 'evacuation',
-                message: 'Emergency evacuation initiated',
-              });
-              setEmergencyActive(true);
-              Alert.alert('Success', 'Emergency evacuation initiated');
+              if (isDemoMode) {
+                Alert.alert('Demo mode', 'Emergency evacuation simulation initiated');
+              } else {
+                await alertsAPI.initiateEmergency({
+                  type: 'evacuation',
+                  message: 'Emergency evacuation initiated',
+                });
+                setEmergencyActive(true);
+                Alert.alert('Success', 'Emergency evacuation initiated');
+              }
             } catch (err) {
               Alert.alert('Error', 'Failed to trigger emergency');
             } finally {
@@ -122,7 +152,7 @@ export const SecurityDashboard: React.FC = () => {
         },
       ]
     );
-  }, []);
+  }, [isDemoMode]);
 
   if (loading) {
     return <LoadingScreen message="Loading security dashboard..." />;

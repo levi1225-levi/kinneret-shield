@@ -19,12 +19,13 @@ import {
   SectionHeader,
 } from '../../components';
 import { attendanceAPI, roomsAPI, alertsAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { AttendanceRecord, Room, RoomOccupancy } from '../../types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const TeacherDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,12 +39,27 @@ export const TeacherDashboard: React.FC = () => {
     try {
       setError(null);
 
-      // Fetch rooms
-      const roomsData = await roomsAPI.getRooms({ page: 1, limit: 50 });
-      const roomsList = roomsData.items;
+      let roomsData;
+      let occupancyData;
+      let attendanceData;
+      let alertsData;
 
-      // Fetch occupancy for each room
-      const occupancyData = await roomsAPI.getAllOccupancies();
+      if (isDemoMode) {
+        // Use mock data in demo mode
+        roomsData = await mockAPI.getRooms(1, 50);
+        occupancyData = await mockAPI.getAllOccupancies();
+        attendanceData = await mockAPI.getAttendance(1, 10);
+        alertsData = await mockAPI.getUnresolvedAlerts(1, 100);
+      } else {
+        // Use real API calls in normal mode
+        roomsData = await roomsAPI.getRooms({ page: 1, limit: 50 });
+        occupancyData = await roomsAPI.getAllOccupancies();
+        attendanceData = await attendanceAPI.getAttendance({}, { page: 1, limit: 10 });
+        alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 100 });
+      }
+
+      // Process rooms
+      const roomsList = roomsData.items;
       const roomsWithOccupancy = roomsList.map((room) => {
         const occupancy = occupancyData.find((occ) => occ.roomId === room.id);
         return { ...room, occupancy };
@@ -52,20 +68,14 @@ export const TeacherDashboard: React.FC = () => {
       setRooms(roomsWithOccupancy);
       setStudentsPresent(occupancyData.reduce((sum, occ) => sum + occ.currentOccupancy, 0));
       setActiveRooms(occupancyData.filter((occ) => occ.currentOccupancy > 0).length);
-
-      // Fetch recent attendance records
-      const attendanceData = await attendanceAPI.getAttendance({}, { page: 1, limit: 10 });
       setRecentActivity(attendanceData.items);
-
-      // Fetch active alerts
-      const alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 100 });
       setActiveAlerts(alertsData.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDemoMode]);
 
   useEffect(() => {
     fetchData();

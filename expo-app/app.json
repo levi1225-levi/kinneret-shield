@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kinneretshield.app"
+      "bundleIdentifier": "com.kinneretshield.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,8 +39,14 @@
     ],
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "9cd298df-d86b-461a-9656-7b781444c1e0"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9cd298df-d86b-461a-9656-7b781444c1e0"
     }
   }
 }

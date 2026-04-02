@@ -18,6 +18,8 @@ import {
   getStatusColor,
 } from '../../utils/theme';
 import { devicesAPI } from '../../api';
+import { mockAPI, MOCK_DEVICES } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { Device, DeviceStatus } from '../../types';
 import { Header, FilterChip, EmptyState, Card } from '../../components';
 
@@ -28,6 +30,7 @@ interface DevicesScreenProps {
 type StatusFilter = 'all' | DeviceStatus;
 
 export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
+  const { isDemoMode } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -42,10 +45,12 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
         const loader = pageNum === 1 ? setIsLoading : setIsLoadingMore;
         loader(true);
 
-        const response = await devicesAPI.getDevices({
-          page: pageNum,
-          limit: 20,
-        });
+        const response = isDemoMode
+          ? await mockAPI.getDevices()
+          : await devicesAPI.getDevices({
+              page: pageNum,
+              limit: 20,
+            });
 
         let filteredItems = response.items;
         if (selectedStatus !== 'all') {
@@ -69,7 +74,7 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
         setIsRefreshing(false);
       }
     },
-    [selectedStatus]
+    [selectedStatus, isDemoMode]
   );
 
   useEffect(() => {

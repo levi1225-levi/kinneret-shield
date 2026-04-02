@@ -18,11 +18,12 @@ import {
   SectionHeader,
 } from '../../components';
 import { usersAPI, devicesAPI, alertsAPI, attendanceAPI, roomsAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const ManagementDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,47 +43,81 @@ export const ManagementDashboard: React.FC = () => {
     try {
       setError(null);
 
-      // Fetch users (students)
-      const usersData = await usersAPI.getUsers({ page: 1, limit: 1000 });
-      const studentCount = usersData.items.filter((u) => u.role === 'student').length;
-      setTotalStudents(studentCount);
+      if (isDemoMode) {
+        // Use mock data in demo mode
+        const usersData = await mockAPI.getUsers(1, 1000);
+        const studentCount = usersData.items.filter((u) => u.role === 'student').length;
+        setTotalStudents(studentCount);
 
-      // Fetch rooms
-      const roomsData = await roomsAPI.getRooms({ page: 1, limit: 1000 });
-      setTotalRooms(roomsData.total);
+        const roomsData = await mockAPI.getRooms(1, 1000);
+        setTotalRooms(roomsData.total);
 
-      // Fetch devices
-      const devicesData = await devicesAPI.getDevices({ page: 1, limit: 1000 });
-      setTotalDevices(devicesData.total);
-      const online = devicesData.items.filter((d) => d.status === 'online').length;
-      setDevicesOnline(online);
-      setOfflineDevices(devicesData.total - online);
+        const devicesData = await mockAPI.getDevices(1, 1000);
+        setTotalDevices(devicesData.total);
+        const online = devicesData.items.filter((d) => d.status === 'online').length;
+        setDevicesOnline(online);
+        setOfflineDevices(devicesData.total - online);
 
-      // Fetch active alerts
-      const alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 100 });
-      setActiveAlerts(alertsData.total);
+        const alertsData = await mockAPI.getAlerts(1, 100);
+        setActiveAlerts(alertsData.total);
 
-      // Fetch today's attendance
-      const attendanceData = await attendanceAPI.getAttendance({}, { page: 1, limit: 1000 });
-      const todayRecords = attendanceData.items.filter((record) => {
-        const recordDate = record.created_at.split('T')[0];
-        return recordDate === today;
-      });
+        const attendanceData = await mockAPI.getAttendance(1, 1000);
+        const todayRecords = attendanceData.items.filter((record) => {
+          const recordDate = record.created_at.split('T')[0];
+          return recordDate === today;
+        });
 
-      const present = todayRecords.filter(
-        (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
-      ).length;
-      const late = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
+        const present = todayRecords.filter(
+          (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
+        ).length;
+        const late = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
 
-      setPresentToday(present);
-      setLateToday(late);
-      setAbsentToday(studentCount - present);
+        setPresentToday(present);
+        setLateToday(late);
+        setAbsentToday(studentCount - present);
+      } else {
+        // Fetch users (students)
+        const usersData = await usersAPI.getUsers({ page: 1, limit: 1000 });
+        const studentCount = usersData.items.filter((u) => u.role === 'student').length;
+        setTotalStudents(studentCount);
+
+        // Fetch rooms
+        const roomsData = await roomsAPI.getRooms({ page: 1, limit: 1000 });
+        setTotalRooms(roomsData.total);
+
+        // Fetch devices
+        const devicesData = await devicesAPI.getDevices({ page: 1, limit: 1000 });
+        setTotalDevices(devicesData.total);
+        const online = devicesData.items.filter((d) => d.status === 'online').length;
+        setDevicesOnline(online);
+        setOfflineDevices(devicesData.total - online);
+
+        // Fetch active alerts
+        const alertsData = await alertsAPI.getUnresolvedAlerts({ page: 1, limit: 100 });
+        setActiveAlerts(alertsData.total);
+
+        // Fetch today's attendance
+        const attendanceData = await attendanceAPI.getAttendance({}, { page: 1, limit: 1000 });
+        const todayRecords = attendanceData.items.filter((record) => {
+          const recordDate = record.created_at.split('T')[0];
+          return recordDate === today;
+        });
+
+        const present = todayRecords.filter(
+          (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
+        ).length;
+        const late = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
+
+        setPresentToday(present);
+        setLateToday(late);
+        setAbsentToday(studentCount - present);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  }, [today]);
+  }, [today, isDemoMode]);
 
   useEffect(() => {
     fetchData();
@@ -104,12 +139,19 @@ export const ManagementDashboard: React.FC = () => {
           text: 'Proceed',
           onPress: async () => {
             try {
-              const result = await attendanceAPI.autoCheckout();
-              Alert.alert(
-                'Success',
-                `Auto-checkout completed. ${result.count} students were checked out.`
-              );
-              fetchData();
+              if (isDemoMode) {
+                Alert.alert(
+                  'Success',
+                  'Demo mode - Auto-checkout simulation completed. 12 students were checked out.'
+                );
+              } else {
+                const result = await attendanceAPI.autoCheckout();
+                Alert.alert(
+                  'Success',
+                  `Auto-checkout completed. ${result.count} students were checked out.`
+                );
+                fetchData();
+              }
             } catch (err) {
               Alert.alert('Error', 'Failed to perform auto-checkout');
             }
@@ -117,7 +159,7 @@ export const ManagementDashboard: React.FC = () => {
         },
       ]
     );
-  }, [fetchData]);
+  }, [fetchData, isDemoMode]);
 
   const handleGenerateReport = useCallback(() => {
     Alert.alert(
@@ -129,11 +171,18 @@ export const ManagementDashboard: React.FC = () => {
           text: 'Generate',
           onPress: async () => {
             try {
-              const result = await attendanceAPI.generateDailyReports();
-              Alert.alert(
-                'Success',
-                `Reports generated for ${result.count} rooms.`
-              );
+              if (isDemoMode) {
+                Alert.alert(
+                  'Success',
+                  'Demo mode - Reports generated for 8 rooms.'
+                );
+              } else {
+                const result = await attendanceAPI.generateDailyReports();
+                Alert.alert(
+                  'Success',
+                  `Reports generated for ${result.count} rooms.`
+                );
+              }
             } catch (err) {
               Alert.alert('Error', 'Failed to generate reports');
             }
@@ -141,7 +190,7 @@ export const ManagementDashboard: React.FC = () => {
         },
       ]
     );
-  }, []);
+  }, [isDemoMode]);
 
   if (loading) {
     return <LoadingScreen message="Loading management dashboard..." />;

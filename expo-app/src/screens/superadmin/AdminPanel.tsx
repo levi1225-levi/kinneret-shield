@@ -21,6 +21,8 @@ import {
   Card,
 } from '../../components';
 import { usersAPI, invitesAPI } from '../../api';
+import { mockAPI, MOCK_INVITES } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { User, InviteCode, UserRole } from '../../types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -33,6 +35,7 @@ interface SettingsItem {
 }
 
 export const AdminPanel: React.FC = () => {
+  const { isDemoMode } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('users');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,20 +65,32 @@ export const AdminPanel: React.FC = () => {
       setError(null);
 
       if (activeTab === 'users') {
-        const usersData = await usersAPI.getUsers({ page: 1, limit: 100 });
-        setUsers(usersData.items);
-        setFilteredUsers(usersData.items);
+        if (isDemoMode) {
+          const usersData = await mockAPI.getUsers(1, 100);
+          setUsers(usersData.items);
+          setFilteredUsers(usersData.items);
+        } else {
+          const usersData = await usersAPI.getUsers({ page: 1, limit: 100 });
+          setUsers(usersData.items);
+          setFilteredUsers(usersData.items);
+        }
       } else if (activeTab === 'invites') {
-        const invitesData = await invitesAPI.getInvites({ page: 1, limit: 100 });
-        setInvites(invitesData.items);
-        setFilteredInvites(invitesData.items);
+        if (isDemoMode) {
+          const invitesData = await mockAPI.getInvites(1, 100);
+          setInvites(invitesData.items);
+          setFilteredInvites(invitesData.items);
+        } else {
+          const invitesData = await invitesAPI.getInvites({ page: 1, limit: 100 });
+          setInvites(invitesData.items);
+          setFilteredInvites(invitesData.items);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, isDemoMode]);
 
   useEffect(() => {
     setLoading(true);
@@ -113,14 +128,22 @@ export const AdminPanel: React.FC = () => {
             {
               text: 'Confirm',
               onPress: async () => {
-                const updatedUser = newStatus
-                  ? await usersAPI.activateUser(user.id)
-                  : await usersAPI.deactivateUser(user.id);
+                if (isDemoMode) {
+                  const updatedUser = { ...user, is_active: newStatus };
+                  setUsers(
+                    users.map((u) => (u.id === user.id ? updatedUser : u))
+                  );
+                  Alert.alert('Success', `Demo mode - User ${action}d successfully`);
+                } else {
+                  const updatedUser = newStatus
+                    ? await usersAPI.activateUser(user.id)
+                    : await usersAPI.deactivateUser(user.id);
 
-                setUsers(
-                  users.map((u) => (u.id === user.id ? updatedUser : u))
-                );
-                Alert.alert('Success', `User ${action}d successfully`);
+                  setUsers(
+                    users.map((u) => (u.id === user.id ? updatedUser : u))
+                  );
+                  Alert.alert('Success', `User ${action}d successfully`);
+                }
               },
               style: 'destructive',
             },
@@ -130,7 +153,7 @@ export const AdminPanel: React.FC = () => {
         Alert.alert('Error', 'Failed to update user status');
       }
     },
-    [users]
+    [users, isDemoMode]
   );
 
   // Invites tab handlers
@@ -151,12 +174,33 @@ export const AdminPanel: React.FC = () => {
         onPress: async () => {
           try {
             setCreatingInvite(true);
-            const newInvite = await invitesAPI.createInvite(role);
-            setInvites([newInvite, ...invites]);
-            Alert.alert(
-              'Success',
-              `Invite code created: ${newInvite.code}\n\nCopy and share this code with the user.`
-            );
+            if (isDemoMode) {
+              const mockCode = `DEMO-${role.toUpperCase()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+              const newInvite: InviteCode = {
+                id: `mock-${Date.now()}`,
+                code: mockCode,
+                role,
+                is_used: false,
+                is_expired: false,
+                created_at: new Date().toISOString(),
+                created_by: 'admin',
+                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                used_by: undefined,
+                used_at: undefined,
+              };
+              setInvites([newInvite, ...invites]);
+              Alert.alert(
+                'Success',
+                `Demo mode - Invite code created: ${newInvite.code}\n\nCopy and share this code with the user.`
+              );
+            } else {
+              const newInvite = await invitesAPI.createInvite(role);
+              setInvites([newInvite, ...invites]);
+              Alert.alert(
+                'Success',
+                `Invite code created: ${newInvite.code}\n\nCopy and share this code with the user.`
+              );
+            }
           } catch (err) {
             Alert.alert('Error', 'Failed to create invite code');
           } finally {
@@ -166,7 +210,7 @@ export const AdminPanel: React.FC = () => {
       })),
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [invites]);
+  }, [invites, isDemoMode]);
 
   const renderUsersTab = () => {
     if (error) {

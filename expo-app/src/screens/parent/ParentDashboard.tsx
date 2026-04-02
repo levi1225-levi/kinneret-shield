@@ -18,12 +18,13 @@ import {
   SectionHeader,
 } from '../../components';
 import { attendanceAPI } from '../../api';
+import { mockAPI } from '../../utils/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { AttendanceRecord } from '../../types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const ParentDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,10 +42,12 @@ export const ParentDashboard: React.FC = () => {
       if (!user?.id) return;
 
       // Get attendance records (using current user ID as student_id for demonstration)
-      const allData = await attendanceAPI.getStudentAttendance(user.id, {
-        page: 1,
-        limit: 100,
-      });
+      const allData = isDemoMode
+        ? await mockAPI.getStudentAttendance('usr-0001')
+        : await attendanceAPI.getStudentAttendance(user.id, {
+            page: 1,
+            limit: 100,
+          });
 
       // Check if present today
       const todayRecords = allData.items.filter((record) => {
@@ -96,7 +99,7 @@ export const ParentDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, todayString]);
+  }, [user?.id, todayString, isDemoMode]);
 
   useEffect(() => {
     fetchData();

@@ -21,10 +21,11 @@ import {
 import { attendanceAPI } from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { AttendanceRecord } from '../../types';
+import { MOCK_ATTENDANCE, mockAPI } from '../../utils/mockData';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const StudentDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isDemoMode } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,42 +42,65 @@ export const StudentDashboard: React.FC = () => {
       setError(null);
       if (!user?.id) return;
 
-      // Get attendance records for today
-      const todayData = await attendanceAPI.getStudentAttendance(user.id, {
-        page: 1,
-        limit: 10,
-      });
+      if (isDemoMode) {
+        // Use mock data when in demo mode
+        const allMockData = MOCK_ATTENDANCE.filter((r) => r.student_id === user.id);
 
-      const todayRecords = todayData.items.filter((record) => {
-        const recordDate = record.created_at.split('T')[0];
-        return recordDate === todayString;
-      });
+        const todayRecords = allMockData.filter((record) => {
+          const recordDate = record.created_at.split('T')[0];
+          return recordDate === todayString;
+        });
 
-      setTodayCheckins(todayRecords.length);
-      setTodayActivity(todayRecords);
+        setTodayCheckins(todayRecords.length);
+        setTodayActivity(todayRecords);
+        setRecentHistory(allMockData.slice(0, 5));
 
-      // Get all attendance records for rate calculation
-      const allData = await attendanceAPI.getStudentAttendance(user.id, {
-        page: 1,
-        limit: 100,
-      });
+        // Calculate attendance rate (simple: present/total)
+        if (allMockData.length > 0) {
+          const presentCount = allMockData.filter(
+            (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
+          ).length;
+          const rate = Math.round((presentCount / allMockData.length) * 100);
+          setAttendanceRate(rate);
+        }
+      } else {
+        // Get attendance records for today
+        const todayData = await attendanceAPI.getStudentAttendance(user.id, {
+          page: 1,
+          limit: 10,
+        });
 
-      setRecentHistory(allData.items.slice(0, 5));
+        const todayRecords = todayData.items.filter((record) => {
+          const recordDate = record.created_at.split('T')[0];
+          return recordDate === todayString;
+        });
 
-      // Calculate attendance rate (simple: present/total)
-      if (allData.items.length > 0) {
-        const presentCount = allData.items.filter(
-          (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
-        ).length;
-        const rate = Math.round((presentCount / allData.items.length) * 100);
-        setAttendanceRate(rate);
+        setTodayCheckins(todayRecords.length);
+        setTodayActivity(todayRecords);
+
+        // Get all attendance records for rate calculation
+        const allData = await attendanceAPI.getStudentAttendance(user.id, {
+          page: 1,
+          limit: 100,
+        });
+
+        setRecentHistory(allData.items.slice(0, 5));
+
+        // Calculate attendance rate (simple: present/total)
+        if (allData.items.length > 0) {
+          const presentCount = allData.items.filter(
+            (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
+          ).length;
+          const rate = Math.round((presentCount / allData.items.length) * 100);
+          setAttendanceRate(rate);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [user?.id, todayString]);
+  }, [user?.id, todayString, isDemoMode]);
 
   useEffect(() => {
     fetchData();
