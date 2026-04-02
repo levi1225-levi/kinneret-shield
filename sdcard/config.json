@@ -1,0 +1,8 @@
+{
+  "device_id": "KINNERET_SHIELD_01",
+  "room_name": "Room 201",
+  "api_key": "your-api-key-here",
+  "server_url": "http://attendance.school.local",
+  "wifi_ssid": "",
+  "wifi_password": ""
+}

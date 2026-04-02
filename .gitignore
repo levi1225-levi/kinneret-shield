@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.expo/
+dist/
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+web-build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Expo
+expo-app/.expo/
+expo-app/dist/
+expo-app/node_modules/
+
+# Backend
+backend/node_modules/
+backend/dist/
+backend/.env
+
+# Flutter (legacy)
+app/.dart_tool/
+app/.packages
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+
+# Firmware build
+firmware/.pio/
+firmware/.vscode/
+
+# Logs
+*.log
+npm-debug.log*

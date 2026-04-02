@@ -1,0 +1,528 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum definitions
+enum UserRole {
+  student
+  parent
+  teacher
+  security_guard
+  management
+}
+
+enum RoomType {
+  classroom
+  office
+  gym
+  library
+  cafeteria
+  lab
+  common_area
+  other
+}
+
+enum DeviceStatus {
+  online
+  offline
+  error
+}
+
+enum AttendanceStatus {
+  checked_in
+  checked_out
+  auto_checked_out
+}
+
+enum AlertType {
+  unauthorized_access
+  device_offline
+  capacity_exceeded
+  unknown_card
+  emergency
+}
+
+enum AlertSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum LogLevel {
+  info
+  warn
+  error
+}
+
+enum EmergencyEventType {
+  lockdown
+  evacuation
+  drill
+  all_clear
+}
+
+enum NotificationType {
+  alert
+  announcement
+  attendance
+  system
+}
+
+// Users table
+model User {
+  id                    String                    @id @default(cuid())
+  email                 String                    @unique
+  name                  String
+  role                  UserRole
+  avatar_url            String?
+  google_id             String?                   @unique
+  is_active             Boolean                   @default(true)
+  created_at            DateTime                  @default(now())
+  updated_at            DateTime                  @updatedAt
+
+  // Relations
+  student               Student?
+  parent                Parent?
+  teacher               Teacher?
+  staff                 Staff?
+  nfc_cards             NfcCard[]
+  created_invites       InviteCode[]              @relation("CreatedBy")
+  used_invites          InviteCode[]              @relation("UsedBy")
+  resolved_alerts       Alert[]                   @relation("ResolvedBy")
+  created_alerts        Alert[]                   @relation("CreatedBy")
+  created_announcements Announcement[]
+  audit_logs            AuditLog[]
+  created_emergency     EmergencyEvent[]          @relation("InitiatedBy")
+  notifications         Notification[]
+  settings              Settings[]
+
+  @@index([email])
+  @@index([role])
+  @@index([google_id])
+}
+
+// Student profile
+model Student {
+  id                String                @id @default(cuid())
+  user_id           String                @unique
+  student_number    String                @unique
+  grade             String
+  homeroom          String?
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+
+  // Relations
+  user              User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parents           Parent[]              @relation("StudentToParent")
+  attendance        AttendanceRecord[]
+  schedule_enroll   ScheduleEnrollment[]
+
+  @@index([user_id])
+  @@index([student_number])
+  @@index([grade])
+}
+
+// Parent profile
+model Parent {
+  id        String   @id @default(cuid())
+  user_id   String   @unique
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  students  Student[] @relation("StudentToParent")
+
+  @@index([user_id])
+}
+
+// Teacher profile
+model Teacher {
+  id        String   @id @default(cuid())
+  user_id   String   @unique
+  department String?
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  schedules Schedule[]
+
+  @@index([user_id])
+}
+
+// Staff (security guards, management)
+model Staff {
+  id        String   @id @default(cuid())
+  user_id   String   @unique
+  position  String
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+// Rooms
+model Room {
+  id            String              @id @default(cuid())
+  name          String
+  building      String
+  floor         Int
+  room_number   String
+  type          RoomType
+  capacity      Int
+  created_at    DateTime            @default(now())
+  updated_at    DateTime            @updatedAt
+
+  // Relations
+  devices       Device[]
+  attendance    AttendanceRecord[]
+  schedules     Schedule[]
+  alerts        Alert[]
+  daily_reports DailyReport[]
+
+  @@unique([building, floor, room_number])
+  @@index([building])
+  @@index([type])
+}
+
+// NFC Devices (HermitX readers)
+model Device {
+  id                String          @id @default(cuid())
+  room_id           String
+  serial_number     String          @unique
+  firmware_version  String
+  status            DeviceStatus    @default(offline)
+  last_heartbeat    DateTime?
+  config            Json            @default("{}")
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  // Relations
+  room              Room            @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  attendance        AttendanceRecord[]
+  device_logs       DeviceLog[]
+  alerts            Alert[]
+
+  @@index([room_id])
+  @@index([serial_number])
+  @@index([status])
+}
+
+// NFC Cards
+model NfcCard {
+  id            String    @id @default(cuid())
+  uid           String    @unique
+  user_id       String?
+  label         String?
+  is_active     Boolean   @default(true)
+  registered_at DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  // Relations
+  user          User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  attendance    AttendanceRecord[]
+
+  @@index([uid])
+  @@index([user_id])
+  @@index([is_active])
+}
+
+// Attendance Records
+model AttendanceRecord {
+  id            String            @id @default(cuid())
+  student_id    String
+  room_id       String
+  device_id     String
+  nfc_card_id   String
+  check_in_at   DateTime
+  check_out_at  DateTime?
+  status        AttendanceStatus  @default(checked_in)
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+
+  // Relations
+  student       Student           @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  room          Room              @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  device        Device            @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  nfc_card      NfcCard           @relation(fields: [nfc_card_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+  @@index([room_id])
+  @@index([check_in_at])
+  @@index([status])
+}
+
+// Class Schedules
+model Schedule {
+  id                String                @id @default(cuid())
+  room_id           String
+  teacher_id        String
+  subject           String
+  day_of_week       Int                   // 0 = Sunday, 6 = Saturday
+  start_time        String                // HH:MM format
+  end_time          String                // HH:MM format
+  semester          Int                   // 1 or 2
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+
+  // Relations
+  room              Room                  @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  teacher           Teacher               @relation(fields: [teacher_id], references: [id], onDelete: Cascade)
+  enrollments       ScheduleEnrollment[]
+
+  @@index([room_id])
+  @@index([teacher_id])
+  @@index([day_of_week])
+}
+
+// Schedule Enrollments (students in schedules)
+model ScheduleEnrollment {
+  id          String    @id @default(cuid())
+  schedule_id String
+  student_id  String
+  created_at  DateTime  @default(now())
+
+  // Relations
+  schedule    Schedule  @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  student     Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([schedule_id, student_id])
+  @@index([schedule_id])
+  @@index([student_id])
+}
+
+// Alerts
+model Alert {
+  id            String          @id @default(cuid())
+  type          AlertType
+  severity      AlertSeverity
+  room_id       String?
+  device_id     String?
+  user_id       String?
+  message       String
+  data          Json            @default("{}")
+  resolved      Boolean         @default(false)
+  resolved_by   String?
+  resolved_at   DateTime?
+  created_by    String?
+  created_at    DateTime        @default(now())
+
+  // Relations
+  room          Room?           @relation(fields: [room_id], references: [id], onDelete: SetNull)
+  device        Device?         @relation(fields: [device_id], references: [id], onDelete: SetNull)
+  user          User?           @relation("CreatedBy", fields: [user_id], references: [id], onDelete: SetNull)
+  resolved_user User?           @relation("ResolvedBy", fields: [resolved_by], references: [id], onDelete: SetNull)
+  created_user  User?           @relation(fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([severity])
+  @@index([resolved])
+  @@index([created_at])
+}
+
+// Invite Codes
+model InviteCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  role      UserRole
+  created_by String
+  used_by   String?
+  expires_at DateTime
+  used_at   DateTime?
+  created_at DateTime @default(now())
+
+  // Relations
+  creator   User      @relation("CreatedBy", fields: [created_by], references: [id], onDelete: Cascade)
+  user      User?     @relation("UsedBy", fields: [used_by], references: [id], onDelete: SetNull)
+
+  @@index([code])
+  @@index([role])
+  @@index([expires_at])
+}
+
+// Device Logs
+model DeviceLog {
+  id        String    @id @default(cuid())
+  device_id String
+  level     LogLevel
+  message   String
+  data      Json      @default("{}")
+  created_at DateTime @default(now())
+
+  // Relations
+  device    Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+  @@index([level])
+  @@index([created_at])
+}
+
+// Announcements
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  author_id String
+  target_roles UserRole[]
+  active    Boolean   @default(true)
+  created_at DateTime @default(now())
+  expires_at DateTime?
+  updated_at DateTime @updatedAt
+
+  // Relations
+  author    User      @relation(fields: [author_id], references: [id], onDelete: Cascade)
+
+  @@index([author_id])
+  @@index([active])
+  @@index([created_at])
+}
+
+// Audit Logs
+model AuditLog {
+  id          String    @id @default(cuid())
+  user_id     String
+  action      String
+  entity_type String
+  entity_id   String
+  data        Json      @default("{}")
+  ip_address  String?
+  created_at  DateTime  @default(now())
+
+  // Relations
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([action])
+  @@index([entity_type])
+  @@index([created_at])
+}
+
+// Daily Reports
+model DailyReport {
+  id                  String    @id @default(cuid())
+  date                DateTime
+  room_id             String
+  total_check_ins     Int       @default(0)
+  unique_students     Int       @default(0)
+  avg_duration_minutes Float    @default(0)
+  anomalies           Json      @default("[]")
+  created_at          DateTime  @default(now())
+
+  // Relations
+  room                Room      @relation(fields: [room_id], references: [id], onDelete: Cascade)
+
+  @@unique([date, room_id])
+  @@index([room_id])
+  @@index([date])
+}
+
+// Emergency Events
+model EmergencyEvent {
+  id          String              @id @default(cuid())
+  type        EmergencyEventType
+  initiated_by String
+  message     String
+  active      Boolean             @default(true)
+  started_at  DateTime            @default(now())
+  ended_at    DateTime?
+  created_at  DateTime            @default(now())
+
+  // Relations
+  initiator   User                @relation("InitiatedBy", fields: [initiated_by], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([active])
+  @@index([started_at])
+}
+
+// Notifications
+model Notification {
+  id        String             @id @default(cuid())
+  user_id   String
+  title     String
+  body      String
+  type      NotificationType
+  read      Boolean            @default(false)
+  data      Json               @default("{}")
+  created_at DateTime           @default(now())
+
+  // Relations
+  user      User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([read])
+  @@index([created_at])
+}
+
+// Settings
+model Settings {
+  key       String    @id
+  value     Json
+  updated_at DateTime @updatedAt
+  updated_by String
+  created_at DateTime @default(now())
+
+  // Relations
+  user      User      @relation(fields: [updated_by], references: [id], onDelete: Cascade)
+
+  @@index([updated_by])
+}
+
+/*
+Row-Level Security Policies (RLS) Configuration Guide:
+These policies should be enabled in Supabase PostgreSQL:
+
+Users table:
+- SELECT: User can see their own profile, managers can see all
+- UPDATE: User can update their own profile only
+- DELETE: Disabled
+
+Students table:
+- SELECT: Student sees self, parents see linked students, teachers see enrolled students, management sees all
+- UPDATE: Student/parent updates, management updates restricted fields
+- DELETE: Disabled
+
+Attendance table:
+- SELECT: Student sees own, parent sees linked student, teacher sees enrolled, security/management sees all
+- INSERT: Only authenticated devices via device_auth
+- UPDATE: Limited to checkout operations
+- DELETE: Disabled
+
+Rooms table:
+- SELECT: All authenticated users
+- UPDATE: Management only
+- DELETE: Management only
+
+Devices table:
+- SELECT: All authenticated users (capacity info)
+- UPDATE: Management only or device updates own heartbeat/status
+- DELETE: Management only
+
+NfcCards table:
+- SELECT: User sees own cards, management sees all
+- UPDATE: User updates own, management updates all
+- DELETE: User deletes own, management deletes all
+
+Alerts table:
+- SELECT: Created user, affected room manager, security, management
+- UPDATE: Only resolution by authorized users
+- DELETE: Disabled
+
+Invite Codes table:
+- SELECT: Creator, management
+- UPDATE: Management only
+- DELETE: Management only
+*/
