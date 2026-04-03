@@ -42,7 +42,7 @@ export interface RoomOccupancy {
 
 export interface Device {
   id: string;
-  room_id: string;
+  location_id: string;
   serial_number: string;
   firmware_version: string;
   status: DeviceStatus;
@@ -55,7 +55,7 @@ export interface Device {
 export interface AttendanceRecord {
   id: string;
   camper_id: string;
-  room_id: string;
+  location_id: string;
   device_id: string;
   nfc_card_id: string;
   check_in_at: string;
@@ -73,12 +73,12 @@ export interface Alert {
   id: string;
   type: AlertType;
   severity: AlertSeverity;
-  room_id?: string;
+  location_id?: string;
   device_id?: string;
   user_id?: string;
   message: string;
   data: Record<string, any>;
-  resolved: boolean;
+  is_resolved: boolean;
   resolved_by?: string;
   resolved_at?: string;
   created_at: string;
@@ -111,7 +111,7 @@ export interface InviteCode {
 export interface DailyReport {
   id: string;
   date: string;
-  room_id: string;
+  location_id: string;
   total_check_ins: number;
   unique_campers: number;
   avg_duration_minutes: number;
@@ -156,7 +156,7 @@ export interface AttendanceFilter {
 export interface AlertFilter {
   type?: AlertType;
   severity?: AlertSeverity;
-  room_id?: string;
+  location_id?: string;
   device_id?: string;
   resolved?: boolean;
 }

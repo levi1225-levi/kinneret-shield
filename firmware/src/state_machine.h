@@ -127,6 +127,7 @@ private:
 
     // Wristband programming mode state
     bool inProgramMode;
+    bool processingStarted;  // Guard to fire HTTP call only once per processing state
     unsigned long programModeEnterTime;
     char lastProgrammedUID[32];
 };

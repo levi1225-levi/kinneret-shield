@@ -447,3 +447,61 @@ BEGIN
   RETURN v_result;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Auto-checkout: check out all campers who have been checked in for more than X hours
+CREATE OR REPLACE FUNCTION auto_checkout(p_hours_threshold INTEGER DEFAULT 8)
+RETURNS JSONB AS $$
+DECLARE
+  v_count INTEGER;
+BEGIN
+  UPDATE attendance_records SET
+    status = 'auto_checked_out',
+    check_out_at = NOW()
+  WHERE status = 'checked_in'
+    AND check_in_at < NOW() - (p_hours_threshold || ' hours')::INTERVAL;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'auto_checked_out', v_count,
+    'threshold_hours', p_hours_threshold
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Generate daily reports for all locations for a given date
+CREATE OR REPLACE FUNCTION generate_daily_reports(p_date DATE DEFAULT CURRENT_DATE)
+RETURNS JSONB AS $$
+DECLARE
+  v_location RECORD;
+  v_count INTEGER := 0;
+BEGIN
+  FOR v_location IN SELECT id, name FROM locations LOOP
+    INSERT INTO daily_reports (location_id, date, total_check_ins, total_check_outs, unique_campers, peak_occupancy)
+    SELECT
+      v_location.id,
+      p_date,
+      COUNT(*) FILTER (WHERE status IN ('checked_in', 'checked_out', 'auto_checked_out')),
+      COUNT(*) FILTER (WHERE status IN ('checked_out', 'auto_checked_out')),
+      COUNT(DISTINCT camper_id),
+      0  -- peak_occupancy would need time-series analysis
+    FROM attendance_records
+    WHERE location_id = v_location.id
+      AND check_in_at::DATE = p_date
+    ON CONFLICT (location_id, date) DO UPDATE SET
+      total_check_ins = EXCLUDED.total_check_ins,
+      total_check_outs = EXCLUDED.total_check_outs,
+      unique_campers = EXCLUDED.unique_campers,
+      generated_at = NOW();
+
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'locations_processed', v_count,
+    'date', p_date
+  );
+END;
+$$ LANGUAGE plpgsql;

@@ -42,7 +42,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
   const [hasMorePages, setHasMorePages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const unResolvedCount = alerts.filter((a) => !a.resolved).length;
+  const unResolvedCount = alerts.filter((a) => !a.is_resolved).length;
 
   const loadAlerts = useCallback(
     async (pageNum: number = 1, append: boolean = false) => {
@@ -183,7 +183,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
               {item.message}
             </Text>
 
-            {!item.resolved && (
+            {!item.is_resolved && (
               <TouchableOpacity
                 style={[styles.resolveButton, { borderColor: severityColor }]}
                 onPress={() => handleResolveAlert(item)}
@@ -200,7 +200,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
-            {item.resolved && (
+            {item.is_resolved && (
               <View style={styles.resolvedBadge}>
                 <MaterialCommunityIcons
                   name="check-circle"

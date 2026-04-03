@@ -19,7 +19,7 @@ export const getDevices = async (
     .select(
       `
       id,
-      room_id,
+      location_id,
       serial_number,
       firmware_version,
       status,
@@ -55,7 +55,7 @@ export const getDevice = async (id: string): Promise<Device> => {
     .select(
       `
       id,
-      room_id,
+      location_id,
       serial_number,
       firmware_version,
       status,
@@ -85,7 +85,7 @@ export const getDevicesByLocation = async (locationId: string): Promise<Device[]
     .select(
       `
       id,
-      room_id,
+      location_id,
       serial_number,
       firmware_version,
       status,
@@ -96,7 +96,7 @@ export const getDevicesByLocation = async (locationId: string): Promise<Device[]
       locations(name)
     `
     )
-    .eq('room_id', locationId);
+    .eq('location_id', locationId);
 
   if (error) {
     throw new Error(`Failed to fetch devices by location: ${error.message}`);

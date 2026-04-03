@@ -66,6 +66,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Validate that device has a location_id
+    if (!device.location_id) {
+      return new Response(JSON.stringify({ error: "Device has no assigned location" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Process the tap using the database function
     const tapTimestamp = timestamp
       ? new Date(timestamp * 1000).toISOString()

@@ -40,13 +40,13 @@ export const getAlerts = async (
     query = query.eq('severity', filters.severity);
   }
   if (filters?.room_id) {
-    query = query.eq('room_id', filters.room_id);
+    query = query.eq('location_id', filters.room_id);
   }
   if (filters?.device_id) {
     query = query.eq('device_id', filters.device_id);
   }
   if (filters?.resolved !== undefined) {
-    query = query.eq('resolved', filters.resolved);
+    query = query.eq('is_resolved', filters.resolved);
   }
 
   // Apply pagination and ordering
@@ -83,7 +83,7 @@ export const resolveAlert = async (id: string): Promise<Alert> => {
   const { data, error } = await supabase
     .from('alerts')
     .update({
-      resolved: true,
+      is_resolved: true,
       resolved_at: new Date().toISOString(),
     })
     .eq('id', id)

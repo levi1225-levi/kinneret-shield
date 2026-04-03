@@ -27,7 +27,7 @@ export const getAttendance = async (
       `
       id,
       camper_id,
-      room_id,
+      location_id,
       device_id,
       nfc_card_id,
       check_in_at,
@@ -47,7 +47,7 @@ export const getAttendance = async (
     query = query.eq('camper_id', filters.camper_id);
   }
   if (filters?.room_id) {
-    query = query.eq('room_id', filters.room_id);
+    query = query.eq('location_id', filters.room_id);
   }
   if (filters?.status) {
     query = query.eq('status', filters.status);
@@ -113,7 +113,7 @@ export const getDailyReport = async (
   const { data, error } = await supabase
     .from('daily_reports')
     .select('*')
-    .eq('room_id', locationId)
+    .eq('location_id', locationId)
     .eq('date', date)
     .single();
 
@@ -126,28 +126,18 @@ export const getDailyReport = async (
 
 /**
  * Generate daily attendance reports (call RPC or compute from attendance)
+ * TODO: Implement generate_daily_reports RPC function in Supabase
  */
 export const generateDailyReports = async (): Promise<{ count: number }> => {
-  // Call the generate_daily_reports RPC function
-  const { data, error } = await supabase.rpc('generate_daily_reports');
-
-  if (error) {
-    throw new Error(`Failed to generate daily reports: ${error.message}`);
-  }
-
-  return data || { count: 0 };
+  // TODO: RPC function 'generate_daily_reports' does not exist yet
+  throw new Error('generateDailyReports is not yet implemented - RPC function pending');
 };
 
 /**
  * Auto-checkout campers who have been checked in beyond config timeout
+ * TODO: Implement auto_checkout RPC function in Supabase
  */
 export const autoCheckout = async (): Promise<{ count: number }> => {
-  // Call the auto_checkout RPC function
-  const { data, error } = await supabase.rpc('auto_checkout');
-
-  if (error) {
-    throw new Error(`Failed to auto-checkout: ${error.message}`);
-  }
-
-  return data || { count: 0 };
+  // TODO: RPC function 'auto_checkout' does not exist yet
+  throw new Error('autoCheckout is not yet implemented - RPC function pending');
 };

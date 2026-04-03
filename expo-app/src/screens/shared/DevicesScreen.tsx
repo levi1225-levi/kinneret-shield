@@ -148,7 +148,7 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
     // Get location name from device relationship (real API) or room lookup (demo)
     const getLocationName = (): string => {
       if (isDemoMode) {
-        return roomLookup[item.room_id] || 'Unassigned';
+        return roomLookup[item.location_id] || 'Unassigned';
       }
       // In real mode, the device has a locations relationship when queried with locations(name)
       return (item as any).locations?.name || 'Unassigned';

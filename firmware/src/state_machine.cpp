@@ -29,6 +29,7 @@ StateMachine::StateMachine()
       firmwareUpdateProgress(0),
       firmwareUpdateInProgress(false),
       inProgramMode(false),
+      processingStarted(false),
       programModeEnterTime(0) {
     memset(deviceId, 0, MAX_DEVICE_ID_LENGTH);
     memset(roomName, 0, MAX_ROOM_NAME_LENGTH);
@@ -173,6 +174,7 @@ void StateMachine::onStateEnter(DeviceState state) {
 
     case STATE_PROCESSING:
         Serial.println("[StateMachine] Entering PROCESSING");
+        processingStarted = false;
         if (displayHandler) displayHandler->showProcessingScreen();
         if (ledHandler) ledHandler->setPattern(LED_PATTERN_SPIN, LED_COLOR_YELLOW);
         break;
@@ -236,6 +238,7 @@ void StateMachine::onStateEnter(DeviceState state) {
 
     case STATE_PROGRAM_PROCESSING:
         Serial.println("[StateMachine] Entering PROGRAM_PROCESSING");
+        processingStarted = false;
         if (displayHandler) displayHandler->showProgramProcessingScreen();
         if (ledHandler) ledHandler->setPattern(LED_PATTERN_SPIN, LED_COLOR_CYAN);
         break;
@@ -365,8 +368,36 @@ void StateMachine::performStateCardDetectedLogic() {
 }
 
 void StateMachine::performStateProcessingLogic() {
-    // Waiting for attendance processing to complete
-    // NetworkHandler will call onAttendanceProcessed()
+    // Fire HTTP call once when we enter processing
+    if (!processingStarted) {
+        processingStarted = true;
+
+        if (networkHandler && isConnectedToServer) {
+            bool httpOk = networkHandler->sendCardTap(deviceId, lastCardUID, lastCardUIDLength);
+            if (httpOk) {
+                // Response already parsed inside sendCardTap via event callback
+                // If we're still in PROCESSING state, the callback didn't fire properly
+                if (currentState == STATE_PROCESSING) {
+                    // Fallback: treat as success with generic info
+                    Serial.println("[StateMachine] Processing completed via HTTP (no callback transition)");
+                    transitionToState(STATE_SUCCESS);
+                }
+            } else {
+                Serial.println("[StateMachine] HTTP call failed");
+                transitionToState(STATE_FAILURE);
+            }
+        } else {
+            Serial.println("[StateMachine] Not connected, cannot process");
+            transitionToState(STATE_FAILURE);
+        }
+        return;
+    }
+
+    // Timeout after 15 seconds
+    if (millis() - stateEnterTime > 15000) {
+        Serial.println("[StateMachine] Processing timeout");
+        transitionToState(STATE_FAILURE);
+    }
 }
 
 void StateMachine::performStateSuccessLogic() {
@@ -449,22 +480,14 @@ void StateMachine::onCardDetected(uint8_t* uid, uint8_t uidLength) {
 
     // Check if in program mode
     if (inProgramMode) {
-        Serial.println("[StateMachine] In program mode - sending to program wristband endpoint");
-        if (networkHandler && isConnectedToServer) {
-            networkHandler->sendProgramWristband(deviceId, uid, uidLength);
-        }
+        Serial.println("[StateMachine] In program mode - will send to program endpoint");
         transitionToState(STATE_PROGRAM_CARD_DETECTED);
     } else {
         // Normal check-in mode
-        // Log to storage and send to server
+        // Log to storage
         if (storageHandler) {
             storageHandler->logAttendanceEvent(uid, uidLength);
         }
-
-        if (networkHandler && isConnectedToServer) {
-            networkHandler->sendCardTap(deviceId, uid, uidLength);
-        }
-
         transitionToState(STATE_CARD_DETECTED);
     }
 }
@@ -627,8 +650,34 @@ void StateMachine::performStateProgramCardDetectedLogic() {
 }
 
 void StateMachine::performStateProgramProcessingLogic() {
-    // Waiting for wristband programming to complete
-    // NetworkHandler will call onWristbandProgrammed()
+    // Fire HTTP call once when we enter processing
+    if (!processingStarted) {
+        processingStarted = true;
+
+        if (networkHandler && isConnectedToServer) {
+            bool httpOk = networkHandler->sendProgramWristband(deviceId, lastCardUID, lastCardUIDLength);
+            if (httpOk) {
+                // If callback didn't transition us, treat as success
+                if (currentState == STATE_PROGRAM_PROCESSING) {
+                    Serial.println("[StateMachine] Program wristband HTTP succeeded");
+                    transitionToState(STATE_PROGRAM_SUCCESS);
+                }
+            } else {
+                Serial.println("[StateMachine] Program wristband HTTP failed");
+                transitionToState(STATE_PROGRAM_FAILURE);
+            }
+        } else {
+            Serial.println("[StateMachine] Not connected, cannot program wristband");
+            transitionToState(STATE_PROGRAM_FAILURE);
+        }
+        return;
+    }
+
+    // Timeout after 15 seconds
+    if (millis() - stateEnterTime > 15000) {
+        Serial.println("[StateMachine] Program processing timeout");
+        transitionToState(STATE_PROGRAM_FAILURE);
+    }
 }
 
 void StateMachine::performStateProgramSuccessLogic() {
