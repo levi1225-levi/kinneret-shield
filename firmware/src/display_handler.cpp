@@ -164,22 +164,25 @@ void DisplayHandler::showBootScreen(const char* version) {
     clearDisplay();
     strncpy(currentScreen, "BOOT", 31);
 
-    // Title
+    // Main title
     display->setTextSize(2);
     display->setTextColor(SSD1306_WHITE);
-    drawCenteredText(5, "KINNERET", 2);
+    drawCenteredText(5, "Kinneret", 2);
 
     // Subtitle
     display->setTextSize(1);
-    drawCenteredText(25, "Shield", 1);
+    drawCenteredText(22, "Shield", 2);
+
+    // Camp name
+    drawCenteredText(38, "Camp Northland", 1);
 
     // Version
     char versionStr[32];
     snprintf(versionStr, 31, "v%s", version);
-    drawCenteredText(40, versionStr, 1);
+    drawCenteredText(48, versionStr, 1);
 
     // Status
-    drawCenteredText(55, "Initializing...", 1);
+    drawCenteredText(58, "Initializing...", 1);
 
     updateDisplay();
 }
@@ -190,25 +193,19 @@ void DisplayHandler::showIdleScreen(const char* roomName) {
     clearDisplay();
     strncpy(currentScreen, "IDLE", 31);
 
-    // Room name (large, centered)
+    // Location name (large, centered)
     display->setTextSize(2);
     display->setTextColor(SSD1306_WHITE);
     drawCenteredText(5, roomName, 2);
 
-    // Time
-    display->setTextSize(1);
-    char timeStr[32];
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    strftime(timeStr, 31, "%H:%M:%S", timeinfo);
-    drawCenteredText(25, timeStr, 1);
-
     // Divider line
-    display->drawLine(0, 35, OLED_WIDTH, 35, SSD1306_WHITE);
+    display->drawLine(0, 20, OLED_WIDTH, 20, SSD1306_WHITE);
 
     // Status
-    drawCenteredText(42, "Ready for check-in", 1);
-    drawCenteredText(53, "Tap card to continue", 1);
+    display->setTextSize(1);
+    drawCenteredText(28, "Ready", 1);
+    drawCenteredText(38, "Tap Wristband", 1);
+    drawCenteredText(48, "to Check In", 1);
 
     // WiFi signal (top right)
     drawWiFiSignal(-50);
@@ -269,7 +266,7 @@ void DisplayHandler::showProcessingScreen() {
     updateDisplay();
 }
 
-void DisplayHandler::showSuccessScreen(const char* studentName, const char* status) {
+void DisplayHandler::showSuccessScreen(const char* camperName, const char* status) {
     if (!display) return;
 
     clearDisplay();
@@ -281,20 +278,26 @@ void DisplayHandler::showSuccessScreen(const char* studentName, const char* stat
     // Checkmark
     drawCheckmark();
 
-    // Student name
-    drawCenteredText(25, studentName, 1);
+    // Camper name
+    drawCenteredText(25, camperName, 2);
 
-    // Status (check-in or check-out)
+    // Status (Checked In or Checked Out)
     char statusMsg[64];
-    snprintf(statusMsg, 63, "%s successful", status);
-    drawCenteredText(35, statusMsg, 1);
+    if (strcmp(status, "check-in") == 0 || strcmp(status, "in") == 0) {
+        snprintf(statusMsg, 63, "Checked In");
+    } else if (strcmp(status, "check-out") == 0 || strcmp(status, "out") == 0) {
+        snprintf(statusMsg, 63, "Checked Out");
+    } else {
+        snprintf(statusMsg, 63, "%s", status);
+    }
+    drawCenteredText(40, statusMsg, 1);
 
     // Time
     char timeStr[32];
     time_t now = time(nullptr);
     struct tm* timeinfo = localtime(&now);
-    strftime(timeStr, 31, "%H:%M:%S", timeinfo);
-    drawCenteredText(50, timeStr, 1);
+    strftime(timeStr, 31, "%H:%M", timeinfo);
+    drawCenteredText(52, timeStr, 1);
 
     updateDisplay();
 }
@@ -311,7 +314,7 @@ void DisplayHandler::showErrorScreen(const char* errorMsg) {
     // X mark
     drawXMark();
 
-    // Error message
+    // Error message (examples: "Unknown wristband", "Not registered", etc.)
     drawCenteredText(35, errorMsg, 1);
     drawCenteredText(48, "Try again", 1);
 
@@ -348,12 +351,19 @@ void DisplayHandler::showOfflineScreen() {
     clearDisplay();
     strncpy(currentScreen, "OFFLINE", 31);
 
-    display->setTextSize(1);
+    display->setTextSize(2);
     display->setTextColor(SSD1306_WHITE);
 
-    drawCenteredText(15, "OFFLINE MODE", 2);
-    drawCenteredText(35, "No server connection", 1);
-    drawCenteredText(48, "Local logging enabled", 1);
+    drawCenteredText(12, "Offline Mode", 1);
+
+    display->setTextSize(1);
+    drawCenteredText(28, "No Supabase connection", 1);
+    drawCenteredText(38, "Local logging enabled", 1);
+
+    // Show queued event count if available
+    char queuedStr[32];
+    snprintf(queuedStr, 31, "Queued: %d", 0);  // Would be passed as parameter ideally
+    drawCenteredText(50, queuedStr, 1);
 
     updateDisplay();
 }

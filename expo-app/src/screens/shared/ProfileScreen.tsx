@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Colors,
@@ -28,6 +29,7 @@ interface ProfileScreenProps {
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const { user, logout, refreshUser, isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -98,10 +100,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top }]}
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
       }
+      contentContainerStyle={{ paddingBottom: 40 }}
     >
       {/* Profile Header */}
       <View style={styles.headerCard}>
@@ -180,7 +183,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             leftIcon="information-outline"
             leftColor={Colors.info}
             onPress={() => {
-              Alert.alert('Kinneret Shield', 'Version 1.0.0\n\nAdvanced school safety management system.');
+              Alert.alert('Kinneret Shield', 'Version 1.0.0\n\nCamp safety management system for Camp Northland.');
             }}
             showChevron={true}
           />
@@ -190,7 +193,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             leftIcon="help-circle-outline"
             leftColor={Colors.warning}
             onPress={() => {
-              Alert.alert('Help', 'Support team can be reached at support@kinneret.io');
+              Alert.alert('Help', 'Support team can be reached at support@campnorthland.com');
             }}
             showChevron={true}
           />

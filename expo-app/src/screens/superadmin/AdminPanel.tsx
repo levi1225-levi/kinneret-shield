@@ -11,6 +11,7 @@ import {
   SectionList,
   SectionListRenderItem,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSizes, BorderRadius, Shadows } from '../../utils/theme';
 import {
   ListItem,
@@ -36,6 +37,7 @@ interface SettingsItem {
 
 export const AdminPanel: React.FC = () => {
   const { isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('users');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,9 +56,9 @@ export const AdminPanel: React.FC = () => {
 
   // Settings data
   const settingsData: SettingsItem[] = [
-    { id: '1', label: 'Server URL', value: 'https://api.kinneret-shield.local' },
+    { id: '1', label: 'Server URL', value: 'https://api.kinneret-shield.camp' },
     { id: '2', label: 'Auto-Checkout Time', value: '8 hours' },
-    { id: '3', label: 'Emergency Contacts', value: '2 configured' },
+    { id: '3', label: 'Emergency Contacts', value: '3 configured' },
     { id: '4', label: 'About Kinneret Shield', value: 'v1.0' },
   ];
 
@@ -166,7 +168,7 @@ export const AdminPanel: React.FC = () => {
   }, [inviteSearchQuery, invites]);
 
   const handleCreateInvite = useCallback(() => {
-    const roles: UserRole[] = ['student', 'teacher', 'parent', 'security_guard', 'management'];
+    const roles: UserRole[] = ['management'];
 
     Alert.alert('Create Invite', 'Select a role for the new invite code:', [
       ...roles.map((role) => ({
@@ -251,7 +253,8 @@ export const AdminPanel: React.FC = () => {
               showChevron={false}
             />
           )}
-          scrollEnabled={false}
+          scrollEnabled={true}
+          contentContainerStyle={{ paddingBottom: 20 }}
         />
       </>
     );
@@ -335,7 +338,8 @@ export const AdminPanel: React.FC = () => {
               </View>
             </Card>
           )}
-          scrollEnabled={false}
+          scrollEnabled={true}
+          contentContainerStyle={{ paddingBottom: 20 }}
         />
       </>
     );
@@ -366,7 +370,7 @@ export const AdminPanel: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Tab Bar */}
       <View style={styles.tabBar}>
         <TouchableOpacity
@@ -445,16 +449,8 @@ export const AdminPanel: React.FC = () => {
 
 function getRoleColor(role: string): string {
   switch (role) {
-    case 'student':
-      return Colors.roleStudent;
-    case 'teacher':
-      return Colors.roleTeacher;
-    case 'security_guard':
-      return Colors.roleSecurity;
     case 'management':
       return Colors.roleManagement;
-    case 'parent':
-      return Colors.roleParent;
     default:
       return Colors.textSecondary;
   }
@@ -497,6 +493,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingHorizontal: Spacing.lg,
   },
   inviteHeader: {
     gap: Spacing.md,

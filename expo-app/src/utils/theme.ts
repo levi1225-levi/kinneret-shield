@@ -28,11 +28,9 @@ export const Colors = {
   attendancePresent: '#10B981',
   attendanceAbsent: '#EF4444',
   attendanceLate: '#F59E0B',
-  roleStudent: '#3B82F6',
-  roleTeacher: '#8B5CF6',
-  roleSecurity: '#F97316',
   roleManagement: '#1E3A8A',
-  roleParent: '#EC4899',
+  roleCampDirector: '#2563EB',
+  roleStaff: '#059669',
 };
 
 export const Spacing = {
@@ -90,11 +88,7 @@ export const Shadows = {
 
 export function getRoleColor(role: string): string {
   switch (role) {
-    case 'student': return Colors.roleStudent;
-    case 'teacher': return Colors.roleTeacher;
-    case 'security_guard': return Colors.roleSecurity;
     case 'management': return Colors.roleManagement;
-    case 'parent': return Colors.roleParent;
     default: return Colors.textSecondary;
   }
 }

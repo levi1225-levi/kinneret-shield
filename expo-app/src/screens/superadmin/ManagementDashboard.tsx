@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSizes, BorderRadius, Shadows } from '../../utils/theme';
 import {
   StatCard,
@@ -24,16 +25,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const ManagementDashboard: React.FC = () => {
   const { user, isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [totalRooms, setTotalRooms] = useState(0);
+  const [totalStaff, setTotalStaff] = useState(0);
+  const [totalLocations, setTotalLocations] = useState(0);
   const [devicesOnline, setDevicesOnline] = useState(0);
   const [activeAlerts, setActiveAlerts] = useState(0);
-  const [presentToday, setPresentToday] = useState(0);
-  const [absentToday, setAbsentToday] = useState(0);
-  const [lateToday, setLateToday] = useState(0);
+  const [checkedInToday, setCheckedInToday] = useState(0);
+  const [checkedOutToday, setCheckedOutToday] = useState(0);
+  const [autoCheckedOutToday, setAutoCheckedOutToday] = useState(0);
   const [totalDevices, setTotalDevices] = useState(0);
   const [offlineDevices, setOfflineDevices] = useState(0);
 
@@ -46,11 +48,11 @@ export const ManagementDashboard: React.FC = () => {
       if (isDemoMode) {
         // Use mock data in demo mode
         const usersData = await mockAPI.getUsers(1, 1000);
-        const studentCount = usersData.items.filter((u) => u.role === 'student').length;
-        setTotalStudents(studentCount);
+        const staffCount = usersData.items.length;
+        setTotalStaff(staffCount);
 
         const roomsData = await mockAPI.getRooms(1, 1000);
-        setTotalRooms(roomsData.total);
+        setTotalLocations(roomsData.total);
 
         const devicesData = await mockAPI.getDevices(1, 1000);
         setTotalDevices(devicesData.total);
@@ -67,23 +69,22 @@ export const ManagementDashboard: React.FC = () => {
           return recordDate === today;
         });
 
-        const present = todayRecords.filter(
-          (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
-        ).length;
-        const late = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
+        const checkedIn = todayRecords.filter((r) => r.status === 'checked_in').length;
+        const checkedOut = todayRecords.filter((r) => r.status === 'checked_out').length;
+        const autoCheckedOut = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
 
-        setPresentToday(present);
-        setLateToday(late);
-        setAbsentToday(studentCount - present);
+        setCheckedInToday(checkedIn);
+        setCheckedOutToday(checkedOut);
+        setAutoCheckedOutToday(autoCheckedOut);
       } else {
-        // Fetch users (students)
+        // Fetch users (staff)
         const usersData = await usersAPI.getUsers({ page: 1, limit: 1000 });
-        const studentCount = usersData.items.filter((u) => u.role === 'student').length;
-        setTotalStudents(studentCount);
+        const staffCount = usersData.items.length;
+        setTotalStaff(staffCount);
 
-        // Fetch rooms
+        // Fetch locations
         const roomsData = await roomsAPI.getRooms({ page: 1, limit: 1000 });
-        setTotalRooms(roomsData.total);
+        setTotalLocations(roomsData.total);
 
         // Fetch devices
         const devicesData = await devicesAPI.getDevices({ page: 1, limit: 1000 });
@@ -103,14 +104,13 @@ export const ManagementDashboard: React.FC = () => {
           return recordDate === today;
         });
 
-        const present = todayRecords.filter(
-          (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'auto_checked_out'
-        ).length;
-        const late = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
+        const checkedIn = todayRecords.filter((r) => r.status === 'checked_in').length;
+        const checkedOut = todayRecords.filter((r) => r.status === 'checked_out').length;
+        const autoCheckedOut = todayRecords.filter((r) => r.status === 'auto_checked_out').length;
 
-        setPresentToday(present);
-        setLateToday(late);
-        setAbsentToday(studentCount - present);
+        setCheckedInToday(checkedIn);
+        setCheckedOutToday(checkedOut);
+        setAutoCheckedOutToday(autoCheckedOut);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
@@ -131,8 +131,8 @@ export const ManagementDashboard: React.FC = () => {
 
   const handleAutoCheckout = useCallback(() => {
     Alert.alert(
-      'Auto-Checkout Students',
-      'This will automatically check out any students who have been checked in beyond the configured time limit.',
+      'Auto-Checkout Campers',
+      'This will automatically check out any campers who have been checked in beyond the configured time limit.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -142,13 +142,13 @@ export const ManagementDashboard: React.FC = () => {
               if (isDemoMode) {
                 Alert.alert(
                   'Success',
-                  'Demo mode - Auto-checkout simulation completed. 12 students were checked out.'
+                  'Demo mode - Auto-checkout simulation completed. 12 campers were checked out.'
                 );
               } else {
                 const result = await attendanceAPI.autoCheckout();
                 Alert.alert(
                   'Success',
-                  `Auto-checkout completed. ${result.count} students were checked out.`
+                  `Auto-checkout completed. ${result.count} campers were checked out.`
                 );
                 fetchData();
               }
@@ -164,7 +164,7 @@ export const ManagementDashboard: React.FC = () => {
   const handleGenerateReport = useCallback(() => {
     Alert.alert(
       'Generate Daily Reports',
-      'This will generate attendance reports for all rooms.',
+      'This will generate attendance reports for all locations.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -174,13 +174,13 @@ export const ManagementDashboard: React.FC = () => {
               if (isDemoMode) {
                 Alert.alert(
                   'Success',
-                  'Demo mode - Reports generated for 8 rooms.'
+                  'Demo mode - Reports generated for 8 locations.'
                 );
               } else {
                 const result = await attendanceAPI.generateDailyReports();
                 Alert.alert(
                   'Success',
-                  `Reports generated for ${result.count} rooms.`
+                  `Reports generated for ${result.count} locations.`
                 );
               }
             } catch (err) {
@@ -200,14 +200,12 @@ export const ManagementDashboard: React.FC = () => {
     return <ErrorScreen message={error} onRetry={fetchData} />;
   }
 
-  const presentPercentage = totalStudents > 0 ? Math.round((presentToday / totalStudents) * 100) : 0;
-  const absentPercentage = totalStudents > 0 ? Math.round((absentToday / totalStudents) * 100) : 0;
-  const latePercentage = totalStudents > 0 ? Math.round((lateToday / totalStudents) * 100) : 0;
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      contentContainerStyle={{ paddingBottom: 40 }}
     >
       {/* Welcome Banner */}
       <View style={styles.welcomeSection}>
@@ -215,7 +213,7 @@ export const ManagementDashboard: React.FC = () => {
           <MaterialCommunityIcons name="account-tie" size={40} color={Colors.roleManagement} />
           <View style={styles.welcomeText}>
             <Text style={styles.welcomeTitle}>Welcome, {user?.name}!</Text>
-            <Text style={styles.welcomeSubtitle}>Management Dashboard</Text>
+            <Text style={styles.welcomeSubtitle}>Camp Management Dashboard</Text>
           </View>
         </View>
       </View>
@@ -224,16 +222,16 @@ export const ManagementDashboard: React.FC = () => {
       <View style={styles.statsGrid}>
         <View style={styles.statsRow}>
           <StatCard
-            title="Total Students"
-            value={totalStudents}
+            title="Total Staff"
+            value={totalStaff}
             icon="account-multiple"
             color={Colors.info}
             style={styles.gridCard}
           />
           <StatCard
-            title="Rooms"
-            value={totalRooms}
-            icon="door-multiple"
+            title="Locations"
+            value={totalLocations}
+            icon="map-marker-multiple"
             color={Colors.primary}
             style={styles.gridCard}
           />
@@ -257,7 +255,7 @@ export const ManagementDashboard: React.FC = () => {
       </View>
 
       {/* Attendance Overview Section */}
-      <SectionHeader title="Today's Attendance Overview" />
+      <SectionHeader title="Today's Check-In Activity" />
       <View style={styles.attendanceContainer}>
         <Card style={styles.attendanceCard}>
           <View style={styles.attendanceStats}>
@@ -268,20 +266,18 @@ export const ManagementDashboard: React.FC = () => {
                 color={Colors.success}
                 style={styles.attendanceIcon}
               />
-              <Text style={styles.attendanceValue}>{presentToday}</Text>
-              <Text style={styles.attendanceLabel}>Present</Text>
-              <Text style={styles.attendancePercent}>{presentPercentage}%</Text>
+              <Text style={styles.attendanceValue}>{checkedInToday}</Text>
+              <Text style={styles.attendanceLabel}>Checked In</Text>
             </View>
             <View style={styles.attendanceStat}>
               <MaterialCommunityIcons
-                name="close-circle"
+                name="logout"
                 size={32}
-                color={Colors.danger}
+                color={Colors.primary}
                 style={styles.attendanceIcon}
               />
-              <Text style={styles.attendanceValue}>{absentToday}</Text>
-              <Text style={styles.attendanceLabel}>Absent</Text>
-              <Text style={styles.attendancePercent}>{absentPercentage}%</Text>
+              <Text style={styles.attendanceValue}>{checkedOutToday}</Text>
+              <Text style={styles.attendanceLabel}>Checked Out</Text>
             </View>
             <View style={styles.attendanceStat}>
               <MaterialCommunityIcons
@@ -290,9 +286,8 @@ export const ManagementDashboard: React.FC = () => {
                 color={Colors.warning}
                 style={styles.attendanceIcon}
               />
-              <Text style={styles.attendanceValue}>{lateToday}</Text>
-              <Text style={styles.attendanceLabel}>Late</Text>
-              <Text style={styles.attendancePercent}>{latePercentage}%</Text>
+              <Text style={styles.attendanceValue}>{autoCheckedOutToday}</Text>
+              <Text style={styles.attendanceLabel}>Auto-Checked Out</Text>
             </View>
           </View>
         </Card>

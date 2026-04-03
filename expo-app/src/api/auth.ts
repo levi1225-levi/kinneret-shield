@@ -1,44 +1,59 @@
-import client from './client';
-import { User, AuthResponse } from '../types';
-
-// Request/Response interfaces
-export interface RegisterData {
-  email: string;
-  name: string;
-  role: string;
-  inviteCode?: string;
-}
+import { supabase } from '../lib/supabase';
+import { User } from '../types';
 
 /**
- * Authenticate with Google ID token
+ * Sign in with email and password
  */
-export const login = async (googleIdToken: string): Promise<AuthResponse> => {
-  const response = await client.post<AuthResponse>('/auth/login', {
-    googleIdToken,
+export const signIn = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
   });
-  return response.data;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 };
 
 /**
- * Register a new user
+ * Sign out the current user
  */
-export const register = async (data: RegisterData): Promise<AuthResponse> => {
-  const response = await client.post<AuthResponse>('/auth/register', data);
-  return response.data;
+export const signOut = async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    throw new Error(error.message);
+  }
 };
 
 /**
- * Get current authenticated user
+ * Get the current session
  */
-export const getMe = async (): Promise<User> => {
-  const response = await client.get<User>('/auth/me');
-  return response.data;
+export const getSession = async () => {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data.session;
 };
 
 /**
- * Refresh authentication token
+ * Get current user profile from users table
  */
-export const refreshToken = async (): Promise<{ accessToken: string }> => {
-  const response = await client.post<{ accessToken: string }>('/auth/refresh');
-  return response.data;
+export const getMe = async (): Promise<User | null> => {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('auth_id', sessionData.session.user.id)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 };

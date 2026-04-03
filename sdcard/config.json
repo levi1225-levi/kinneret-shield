@@ -1,8 +1,8 @@
 {
-  "device_id": "KINNERET_SHIELD_01",
-  "room_name": "Room 201",
-  "api_key": "your-api-key-here",
-  "server_url": "http://attendance.school.local",
-  "wifi_ssid": "",
-  "wifi_password": ""
+  "device_id": "hermit-esp32s3-001",
+  "api_key": "your-supabase-device-api-key-here",
+  "supabase_url": "https://YOUR_PROJECT.supabase.co",
+  "location_name": "Waterfront",
+  "wifi_ssid": "CampNorthland",
+  "wifi_password": "your-wifi-password-here"
 }

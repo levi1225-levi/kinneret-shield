@@ -4,12 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes } from '../utils/theme';
 import ManagementDashboard from '../screens/superadmin/ManagementDashboard';
 import RoomsScreen from '../screens/shared/RoomsScreen';
+import DevicesScreen from '../screens/shared/DevicesScreen';
+import AlertsScreen from '../screens/shared/AlertsScreen';
 import AdminPanel from '../screens/superadmin/AdminPanel';
 import ProfileScreen from '../screens/shared/ProfileScreen';
 
 export type ManagementTabsParamList = {
   ManagementDashboard: undefined;
-  Rooms: undefined;
+  Locations: undefined;
+  Devices: undefined;
+  Alerts: undefined;
   Admin: undefined;
   Profile: undefined;
 };
@@ -42,19 +46,39 @@ const ManagementTabs: React.FC = () => {
         name="ManagementDashboard"
         component={ManagementDashboard}
         options={{
-          title: 'Dashboard',
+          title: 'Home',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" color={color} size={size} />
           ),
         }}
       />
       <Tab.Screen
-        name="Rooms"
+        name="Locations"
         component={RoomsScreen}
         options={{
-          title: 'Rooms',
+          title: 'Locations',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" color={color} size={size} />
+            <Ionicons name="map-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Devices"
+        component={DevicesScreen}
+        options={{
+          title: 'Devices',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="hardware-chip-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Alerts"
+        component={AlertsScreen}
+        options={{
+          title: 'Alerts',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="notifications-outline" color={color} size={size} />
           ),
         }}
       />

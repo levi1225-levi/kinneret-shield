@@ -9,9 +9,7 @@ StorageHandler::StorageHandler()
       lastCSVCheck(0),
       syncQueue(nullptr) {
     memset(lastError, 0, 64);
-    memset(cachedDeviceId, 0, MAX_DEVICE_ID_LENGTH);
-    memset(cachedRoomName, 0, MAX_ROOM_NAME_LENGTH);
-    memset(cachedApiKey, 0, MAX_API_KEY_LENGTH);
+    memset(&cachedConfig, 0, sizeof(DeviceConfig));
 }
 
 StorageHandler::~StorageHandler() {
@@ -43,7 +41,7 @@ void StorageHandler::init() {
     }
 
     // Load default config
-    loadDeviceConfig(cachedDeviceId, cachedRoomName);
+    loadDeviceConfig(cachedConfig);
 
     initialized = true;
     Serial.println("[StorageHandler] Initialization complete");
@@ -80,19 +78,27 @@ void StorageHandler::readSDCardInfo() {
                   cardSize, usedSpace, totalSpace);
 }
 
-bool StorageHandler::loadDeviceConfig(char* deviceId, char* roomName) {
+bool StorageHandler::loadDeviceConfig(DeviceConfig& config) {
     if (!sdCardPresent) {
         // Use defaults
-        strncpy(deviceId, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
-        strncpy(roomName, "Room 1", MAX_ROOM_NAME_LENGTH - 1);
+        strncpy(config.device_id, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
+        strncpy(config.location_name, "Waterfront", MAX_ROOM_NAME_LENGTH - 1);
+        strncpy(config.supabase_url, "https://YOUR_PROJECT.supabase.co", 255);
+        strncpy(config.wifi_ssid, "CampNorthland", 63);
+        memset(config.api_key, 0, MAX_API_KEY_LENGTH);
+        memset(config.wifi_password, 0, 64);
         return false;
     }
 
     File configFile = SD.open(CONFIG_FILE_PATH, "r");
     if (!configFile) {
         Serial.println("[StorageHandler] Config file not found, using defaults");
-        strncpy(deviceId, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
-        strncpy(roomName, "Room 1", MAX_ROOM_NAME_LENGTH - 1);
+        strncpy(config.device_id, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
+        strncpy(config.location_name, "Waterfront", MAX_ROOM_NAME_LENGTH - 1);
+        strncpy(config.supabase_url, "https://YOUR_PROJECT.supabase.co", 255);
+        strncpy(config.wifi_ssid, "CampNorthland", 63);
+        memset(config.api_key, 0, MAX_API_KEY_LENGTH);
+        memset(config.wifi_password, 0, 64);
         return false;
     }
 
@@ -107,30 +113,44 @@ bool StorageHandler::loadDeviceConfig(char* deviceId, char* roomName) {
         return false;
     }
 
+    // Load Supabase configuration
     if (doc.containsKey("device_id")) {
-        strncpy(deviceId, doc["device_id"], MAX_DEVICE_ID_LENGTH - 1);
-    }
-    if (doc.containsKey("room_name")) {
-        strncpy(roomName, doc["room_name"], MAX_ROOM_NAME_LENGTH - 1);
+        strncpy(config.device_id, doc["device_id"], MAX_DEVICE_ID_LENGTH - 1);
     }
     if (doc.containsKey("api_key")) {
-        strncpy(cachedApiKey, doc["api_key"], MAX_API_KEY_LENGTH - 1);
+        strncpy(config.api_key, doc["api_key"], MAX_API_KEY_LENGTH - 1);
+    }
+    if (doc.containsKey("location_name")) {
+        strncpy(config.location_name, doc["location_name"], MAX_ROOM_NAME_LENGTH - 1);
+    }
+    if (doc.containsKey("supabase_url")) {
+        strncpy(config.supabase_url, doc["supabase_url"], 255);
+    }
+    if (doc.containsKey("wifi_ssid")) {
+        strncpy(config.wifi_ssid, doc["wifi_ssid"], 63);
+    }
+    if (doc.containsKey("wifi_password")) {
+        strncpy(config.wifi_password, doc["wifi_password"], 63);
     }
 
-    Serial.printf("[StorageHandler] Config loaded: device_id=%s, room=%s\n", deviceId, roomName);
+    Serial.printf("[StorageHandler] Config loaded: device_id=%s, location=%s\n",
+                  config.device_id, config.location_name);
     return true;
 }
 
-bool StorageHandler::saveDeviceConfig(const char* deviceId, const char* roomName, const char* apiKey) {
+bool StorageHandler::saveDeviceConfig(const DeviceConfig& config) {
     if (!sdCardPresent) {
         Serial.println("[StorageHandler] SD card not present, cannot save config");
         return false;
     }
 
-    StaticJsonDocument<256> doc;
-    doc["device_id"] = deviceId;
-    doc["room_name"] = roomName;
-    doc["api_key"] = apiKey;
+    StaticJsonDocument<512> doc;
+    doc["device_id"] = config.device_id;
+    doc["api_key"] = config.api_key;
+    doc["location_name"] = config.location_name;
+    doc["supabase_url"] = config.supabase_url;
+    doc["wifi_ssid"] = config.wifi_ssid;
+    doc["wifi_password"] = config.wifi_password;
 
     File configFile = SD.open(CONFIG_FILE_PATH, "w");
     if (!configFile) {

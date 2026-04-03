@@ -7,7 +7,6 @@
 #include <WiFiManager.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 
 typedef void (*NetworkEventCallback)(const char* event, const char* data);
@@ -36,10 +35,6 @@ public:
     bool connectToServer();
     bool isServerConnected() const { return serverConnected; }
 
-    // WebSocket commands
-    void subscribeToCommands();
-    void unsubscribeFromCommands();
-
     // Configuration endpoint
     void startConfigServer(uint16_t port = 80);
     void stopConfigServer();
@@ -56,13 +51,10 @@ private:
     void handleWiFiConnected();
     void handleWiFiDisconnected();
 
-    // WebSocket handlers
-    void handleWebSocketEvent(WStype_t type, uint8_t* payload, size_t length);
-    void processServerCommand(const char* jsonStr);
-
     // HTTP helpers
     bool sendHttpPost(const char* endpoint, const char* jsonPayload);
     void buildAuthHeaders();
+    void parseResponseCommand(const char* jsonStr);
 
     // Helper methods
     void parseDeviceConfig(const JsonDocument& doc);
@@ -74,13 +66,14 @@ private:
     char deviceId[MAX_DEVICE_ID_LENGTH];
     char apiKey[MAX_API_KEY_LENGTH];
     char roomName[MAX_ROOM_NAME_LENGTH];
+    char supabaseUrl[256];
+    char supabaseFunctionsUrl[256];
 
     // WiFi & Server
     WiFiManager* wifiManager;
     AsyncWebServer* configServer;
-    WebSocketsClient* wsClient;
     unsigned long lastConnectionAttempt;
-    unsigned long wsLastPingTime;
+    unsigned long lastHeartbeatTime;
     int connectionRetries;
 
     // Configuration

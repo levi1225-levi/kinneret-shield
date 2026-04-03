@@ -1,36 +1,29 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { User, UserRole } from '../types';
-import * as authAPI from '../api/auth';
+import { Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+import { User } from '../types';
 import { DEMO_USERS } from '../utils/mockData';
 
-// Context type definition
 interface AuthContextType {
   user: User | null;
-  token: string | null;
+  session: Session | null;
   isLoading: boolean;
-  isAuthenticated: boolean;
   isDemoMode: boolean;
-  login: (googleIdToken: string) => Promise<void>;
-  demoLogin: (role: UserRole) => Promise<void>;
-  register: (data: authAPI.RegisterData) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  loginDemo: () => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
-// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthProviderProps {
   children: React.ReactNode;
 }
 
-/**
- * AuthProvider component that wraps the app and manages authentication state
- */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
@@ -40,60 +33,126 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         setIsLoading(true);
 
-        // Try to retrieve stored token
-        const storedToken = await SecureStore.getItemAsync('auth_token');
+        // Check for existing Supabase session
+        const { data, error } = await supabase.auth.getSession();
 
-        if (storedToken) {
-          // Check if it's a demo token
-          if (storedToken.startsWith('demo-token-')) {
-            const role = storedToken.replace('demo-token-', '').split('-')[0] as UserRole;
-            if (DEMO_USERS[role]) {
-              setToken(storedToken);
-              setUser(DEMO_USERS[role]);
-              setIsDemoMode(true);
-              return;
-            }
-          }
+        if (error) {
+          console.warn('Error retrieving session:', error);
+          setSession(null);
+          setUser(null);
+          return;
+        }
 
-          setToken(storedToken);
+        if (data?.session) {
+          setSession(data.session);
 
-          // Try to get current user from API
-          try {
-            const currentUser = await authAPI.getMe();
-            setUser(currentUser);
-          } catch (error) {
-            // Token is invalid, clear it
-            console.log('No backend available, clearing stored token');
-            await SecureStore.deleteItemAsync('auth_token');
-            setToken(null);
-            setUser(null);
-          }
+          // Fetch the user profile from the users table
+          await fetchUserProfile(data.session.user.id);
         }
       } catch (error) {
         console.error('Error initializing authentication:', error);
+        setSession(null);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeAuth();
+
+    // Listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        console.log('Auth state change:', event);
+
+        if (event === 'SIGNED_IN' && currentSession) {
+          setSession(currentSession);
+          await fetchUserProfile(currentSession.user.id);
+          setIsDemoMode(false);
+        } else if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setIsDemoMode(false);
+        } else if (event === 'TOKEN_REFRESHED') {
+          setSession(currentSession);
+        }
+      }
+    );
+
+    // Cleanup subscription
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
-  /**
-   * Demo login — sets mock user data directly without API call
-   */
-  const demoLogin = useCallback(async (role: UserRole) => {
+  const fetchUserProfile = async (authId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_id', authId)
+        .single();
+
+      if (error) {
+        console.warn('Error fetching user profile:', error);
+        setUser(null);
+        return;
+      }
+
+      if (data) {
+        const userProfile: User = {
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          avatar_url: data.avatar_url,
+          is_active: data.is_active,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        };
+        setUser(userProfile);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      setUser(null);
+    }
+  };
+
+  const login = useCallback(async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      const demoUser = DEMO_USERS[role];
-      const demoToken = `demo-token-${role}-${Date.now()}`;
 
-      // Store token for session persistence
-      await SecureStore.setItemAsync('auth_token', demoToken);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      // Update state
-      setToken(demoToken);
+      if (error) {
+        console.error('Sign in error:', error);
+        throw new Error(error.message);
+      }
+
+      if (data?.session) {
+        setSession(data.session);
+        await fetchUserProfile(data.session.user.id);
+        setIsDemoMode(false);
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const loginDemo = useCallback(() => {
+    try {
+      setIsLoading(true);
+
+      const demoUser = DEMO_USERS.management;
+
       setUser(demoUser);
+      setSession(null);
       setIsDemoMode(true);
     } catch (error) {
       console.error('Demo login failed:', error);
@@ -103,70 +162,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, []);
 
-  /**
-   * Login with Google ID token
-   */
-  const login = useCallback(async (googleIdToken: string) => {
-    try {
-      setIsLoading(true);
-      const response = await authAPI.login(googleIdToken);
-
-      // Store token
-      await SecureStore.setItemAsync(
-        'auth_token',
-        response.token.accessToken
-      );
-
-      // Update state
-      setToken(response.token.accessToken);
-      setUser(response.user);
-      setIsDemoMode(false);
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  /**
-   * Register a new user
-   */
-  const register = useCallback(async (data: authAPI.RegisterData) => {
-    try {
-      setIsLoading(true);
-      const response = await authAPI.register(data);
-
-      // Store token
-      await SecureStore.setItemAsync(
-        'auth_token',
-        response.token.accessToken
-      );
-
-      // Update state
-      setToken(response.token.accessToken);
-      setUser(response.user);
-      setIsDemoMode(false);
-    } catch (error) {
-      console.error('Registration failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  /**
-   * Logout and clear auth state
-   */
   const logout = useCallback(async () => {
     try {
       setIsLoading(true);
 
-      // Clear stored token
-      await SecureStore.deleteItemAsync('auth_token');
+      if (!isDemoMode) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.warn('Sign out error:', error);
+        }
+      }
 
-      // Clear state
-      setToken(null);
+      setSession(null);
       setUser(null);
       setIsDemoMode(false);
     } catch (error) {
@@ -175,37 +182,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isDemoMode]);
 
-  /**
-   * Refresh current user information
-   */
   const refreshUser = useCallback(async () => {
     try {
-      if (!token) return;
+      if (isDemoMode) {
+        return;
+      }
 
-      // In demo mode, just keep the current user
-      if (isDemoMode) return;
+      if (!session?.user?.id) {
+        return;
+      }
 
-      const currentUser = await authAPI.getMe();
-      setUser(currentUser);
+      await fetchUserProfile(session.user.id);
     } catch (error) {
       console.error('Failed to refresh user:', error);
-      // If getting user fails, logout
-      await logout();
       throw error;
     }
-  }, [token, isDemoMode]);
+  }, [session?.user?.id, isDemoMode]);
 
   const value: AuthContextType = {
     user,
-    token,
+    session,
     isLoading,
-    isAuthenticated: !!token && !!user,
     isDemoMode,
     login,
-    demoLogin,
-    register,
+    loginDemo,
     logout,
     refreshUser,
   };
@@ -217,9 +219,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
-/**
- * Hook to use auth context
- */
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {

@@ -1,11 +1,11 @@
 // ─── Enums ───
-export type UserRole = 'student' | 'parent' | 'teacher' | 'security_guard' | 'management';
+export type UserRole = 'management';
 export type DeviceStatus = 'online' | 'offline' | 'error';
 export type AttendanceStatus = 'checked_in' | 'checked_out' | 'auto_checked_out';
 export type AlertType = 'unauthorized_access' | 'device_offline' | 'capacity_exceeded' | 'unknown_card' | 'emergency';
 export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type EmergencyEventType = 'lockdown' | 'evacuation' | 'drill' | 'all_clear';
-export type RoomType = 'classroom' | 'office' | 'gym' | 'library' | 'cafeteria' | 'lab' | 'common_area' | 'other';
+export type RoomType = 'waterfront' | 'cabin' | 'dining_hall' | 'sports_field' | 'arts_crafts' | 'main_office' | 'amphitheatre' | 'canteen' | 'other';
 
 // ─── Models ───
 export interface User {
@@ -22,9 +22,9 @@ export interface User {
 export interface Room {
   id: string;
   name: string;
-  building: string;
+  area: string;
   floor: number;
-  room_number: string;
+  location_code: string;
   type: RoomType;
   capacity: number;
   created_at: string;
@@ -54,7 +54,7 @@ export interface Device {
 
 export interface AttendanceRecord {
   id: string;
-  student_id: string;
+  camper_id: string;
   room_id: string;
   device_id: string;
   nfc_card_id: string;
@@ -65,7 +65,7 @@ export interface AttendanceRecord {
   created_at: string;
   updated_at: string;
   // Joined fields
-  student_name?: string;
+  camper_name?: string;
   room_name?: string;
 }
 
@@ -113,7 +113,7 @@ export interface DailyReport {
   date: string;
   room_id: string;
   total_check_ins: number;
-  unique_students: number;
+  unique_campers: number;
   avg_duration_minutes: number;
   anomalies: any[];
   created_at: string;
@@ -146,7 +146,7 @@ export interface ApiResponse<T> {
 
 // ─── Filter Types ───
 export interface AttendanceFilter {
-  student_id?: string;
+  camper_id?: string;
   room_id?: string;
   startDate?: string;
   endDate?: string;

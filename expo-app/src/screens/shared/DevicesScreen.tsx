@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Colors,
@@ -18,7 +19,7 @@ import {
   getStatusColor,
 } from '../../utils/theme';
 import { devicesAPI } from '../../api';
-import { mockAPI, MOCK_DEVICES } from '../../utils/mockData';
+import { mockAPI, MOCK_DEVICES, MOCK_ROOMS } from '../../utils/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { Device, DeviceStatus } from '../../types';
 import { Header, FilterChip, EmptyState, Card } from '../../components';
@@ -31,6 +32,7 @@ type StatusFilter = 'all' | DeviceStatus;
 
 export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
   const { isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -38,6 +40,14 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
   const [page, setPage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const roomLookup = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    MOCK_ROOMS.forEach((r) => {
+      map[r.id] = r.name;
+    });
+    return map;
+  }, []);
 
   const loadDevices = useCallback(
     async (pageNum: number = 1, append: boolean = false) => {
@@ -159,8 +169,8 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
           </View>
 
           <View style={styles.infoRow}>
-            <Text style={styles.label}>Room ID</Text>
-            <Text style={styles.value}>{item.room_id || 'Unassigned'}</Text>
+            <Text style={styles.label}>Location</Text>
+            <Text style={styles.value}>{roomLookup[item.room_id] || item.room_id || 'Unassigned'}</Text>
           </View>
         </View>
       </Card>
@@ -169,7 +179,7 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <Header title="Devices" subtitle="Manage device status" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -179,7 +189,7 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <Header title="Devices" subtitle={`${devices.length} total`} />
 
       {/* Filter Chips */}
@@ -266,6 +276,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: 20,
   },
   deviceCard: {
     gap: Spacing.md,

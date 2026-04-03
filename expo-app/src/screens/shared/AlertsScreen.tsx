@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Colors,
@@ -32,6 +33,7 @@ type SeverityFilter = 'all' | AlertSeverity;
 
 export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
   const { isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [alerts, setAlerts] = useState<AlertType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -217,7 +219,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <Header
           title="Alerts"
           subtitle={`${unResolvedCount} unresolved`}
@@ -230,7 +232,7 @@ export const AlertsScreen: React.FC<AlertsScreenProps> = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <Header
         title="Alerts"
         subtitle={`${unResolvedCount} unresolved`}
@@ -323,6 +325,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: 20,
   },
   alertCard: {
     paddingHorizontal: 0,

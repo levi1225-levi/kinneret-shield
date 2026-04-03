@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   Colors,
@@ -20,7 +21,7 @@ import {
 import { roomsAPI } from '../../api';
 import { mockAPI } from '../../utils/mockData';
 import { useAuth } from '../../context/AuthContext';
-import { Room } from '../../types';
+import { Room, RoomOccupancy } from '../../types';
 import { Header, SearchBar, EmptyState, Card } from '../../components';
 
 interface RoomsScreenProps {
@@ -29,6 +30,7 @@ interface RoomsScreenProps {
 
 export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
   const { user, isDemoMode } = useAuth();
+  const insets = useSafeAreaInsets();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +39,7 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
   const [page, setPage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [occupancies, setOccupancies] = useState<Record<string, RoomOccupancy>>({});
 
   const isManagement = user?.role === 'management';
 
@@ -57,6 +60,14 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
           setRooms((prev) => [...prev, ...response.items]);
         } else {
           setRooms(response.items);
+        }
+
+        // Load occupancies
+        if (isDemoMode) {
+          const occData = mockAPI.getAllOccupancies();
+          const occMap: Record<string, RoomOccupancy> = {};
+          occData.forEach(occ => { occMap[occ.roomId] = occ; });
+          setOccupancies(occMap);
         }
 
         setHasMorePages(pageNum < response.pages);
@@ -86,8 +97,8 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
       const filtered = rooms.filter(
         (room) =>
           room.name.toLowerCase().includes(query) ||
-          room.room_number.toLowerCase().includes(query) ||
-          room.building.toLowerCase().includes(query)
+          room.location_code.toLowerCase().includes(query) ||
+          room.area.toLowerCase().includes(query)
       );
       setFilteredRooms(filtered);
     }
@@ -104,35 +115,37 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
     }
   }, [isLoadingMore, hasMorePages, page, loadRooms]);
 
-  const handleAddRoom = useCallback(() => {
-    Alert.alert('Add Room', 'Feature coming soon');
+  const handleAddLocation = useCallback(() => {
+    Alert.alert('Add Location', 'Feature coming soon');
   }, []);
 
   const getRoomTypeIcon = (type: string): string => {
     const iconMap: Record<string, string> = {
-      classroom: 'door',
-      office: 'briefcase',
-      gym: 'dumbbell',
-      library: 'library-shelves',
-      cafeteria: 'silverware-fork-knife',
-      lab: 'flask-beaker',
-      common_area: 'home-group',
+      waterfront: 'waves',
+      cabin: 'home-outline',
+      dining_hall: 'silverware-fork-knife',
+      sports_field: 'soccer-field',
+      arts_crafts: 'palette',
+      main_office: 'briefcase',
+      amphitheatre: 'theater',
+      canteen: 'food',
       other: 'help-circle',
     };
     return iconMap[type] || 'help-circle';
   };
 
   const renderRoomItem = ({ item }: { item: Room }) => {
-    const occupancyPercentage = 65; // Mock data - in real app, fetch from API
-    const isAtCapacity = occupancyPercentage >= 90;
-    const currentOccupancy = Math.floor((item.capacity * occupancyPercentage) / 100);
+    const occ = occupancies[item.id];
+    const occupancyPercentage = occ ? occ.occupancyPercentage : 0;
+    const currentOccupancy = occ ? occ.currentOccupancy : 0;
+    const isAtCapacity = occ ? occ.isAtCapacity : false;
 
     return (
       <Card style={styles.roomCard}>
         <View style={styles.roomHeader}>
           <View style={styles.roomTitleSection}>
             <Text style={styles.roomName}>{item.name}</Text>
-            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+            <Text style={styles.roomNumber}>{item.location_code}</Text>
           </View>
           <MaterialCommunityIcons
             name={getRoomTypeIcon(item.type) as any}
@@ -143,11 +156,11 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
 
         <View style={styles.roomInfo}>
           <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Building</Text>
-            <Text style={styles.infoValue}>{item.building}</Text>
+            <Text style={styles.infoLabel}>Area</Text>
+            <Text style={styles.infoValue}>{item.area}</Text>
           </View>
           <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Floor</Text>
+            <Text style={styles.infoLabel}>Zone</Text>
             <Text style={styles.infoValue}>{item.floor}</Text>
           </View>
           <View style={styles.infoItem}>
@@ -203,8 +216,8 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Header title="Rooms" subtitle="View room information" />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <Header title="Locations" subtitle="View location information" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
@@ -213,25 +226,25 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
-      <Header title="Rooms" subtitle={`${filteredRooms.length} rooms`} />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <Header title="Locations" subtitle={`${filteredRooms.length} locations`} />
 
       {/* Search Bar */}
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Search by name, number, or building..."
+        placeholder="Search by name, code, or area..."
       />
 
       {/* Rooms List */}
       {filteredRooms.length === 0 ? (
         <EmptyState
           icon="door-open"
-          title="No Rooms"
+          title="No Locations"
           subtitle={
             searchQuery.trim() !== ''
-              ? 'No rooms match your search'
-              : 'No rooms available'
+              ? 'No locations match your search'
+              : 'No locations available'
           }
         />
       ) : (
@@ -262,7 +275,7 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
       {isManagement && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={handleAddRoom}
+          onPress={handleAddLocation}
           activeOpacity={0.8}
         >
           <MaterialCommunityIcons
@@ -285,6 +298,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: 20,
   },
   roomCard: {
     gap: Spacing.md,

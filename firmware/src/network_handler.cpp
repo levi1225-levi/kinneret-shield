@@ -6,9 +6,8 @@ NetworkHandler::NetworkHandler()
       serverConnected(false),
       wifiManager(nullptr),
       configServer(nullptr),
-      wsClient(nullptr),
       lastConnectionAttempt(0),
-      wsLastPingTime(0),
+      lastHeartbeatTime(0),
       connectionRetries(0),
       wifiSetupMode(false),
       configServerRunning(false),
@@ -17,51 +16,38 @@ NetworkHandler::NetworkHandler()
     memset(deviceId, 0, MAX_DEVICE_ID_LENGTH);
     memset(apiKey, 0, MAX_API_KEY_LENGTH);
     memset(roomName, 0, MAX_ROOM_NAME_LENGTH);
+    memset(supabaseUrl, 0, 256);
+    memset(supabaseFunctionsUrl, 0, 256);
 }
 
 NetworkHandler::~NetworkHandler() {
     stopConfigServer();
     if (wifiManager) delete wifiManager;
-    if (wsClient) delete wsClient;
     if (configServer) delete configServer;
 }
 
 void NetworkHandler::init() {
-    Serial.println("[NetworkHandler] Initializing...");
+    Serial.println("[NetworkHandler] Initializing Supabase Edge Functions client...");
 
-    // Get device configuration
+    // Get device configuration (will be overridden by SD card config)
     strncpy(deviceId, DEVICE_ID, MAX_DEVICE_ID_LENGTH - 1);
+    strncpy(supabaseUrl, SUPABASE_URL, 255);
+    strncpy(supabaseFunctionsUrl, SUPABASE_FUNCTIONS_URL, 255);
 
     // WiFi setup
     wifiManager = new WiFiManager();
     wifiManager->setConnectTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
     wifiManager->setConfigPortalTimeout(600);
 
-    // WebSocket client setup
-    wsClient = new WebSocketsClient();
-    wsClient->onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
-        handleWebSocketEvent(type, payload, length);
-    });
-
     initialized = true;
     Serial.println("[NetworkHandler] Initialization complete");
 }
 
 void NetworkHandler::update() {
-    if (!initialized) return;
+    if (!initialized || !isWiFiConnected()) return;
 
-    unsigned long now = millis();
-
-    // Keep WebSocket alive
-    if (wsClient && serverConnected) {
-        wsClient->loop();
-
-        // Periodic ping
-        if (now - wsLastPingTime > 30000) {
-            wsClient->sendPing();
-            wsLastPingTime = now;
-        }
-    }
+    // HTTP-based polling doesn't require continuous update loop
+    // Heartbeat is sent on demand or by timer in main application
 }
 
 void NetworkHandler::startWiFiManager() {
@@ -109,12 +95,12 @@ bool NetworkHandler::sendCardTap(const char* deviceId, uint8_t* uid, uint8_t uid
         return false;
     }
 
-    Serial.println("[NetworkHandler] Sending card tap to server");
+    Serial.println("[NetworkHandler] Sending card tap to Supabase Edge Function");
 
-    // Build JSON payload
+    // Build JSON payload for Supabase Edge Function
     StaticJsonDocument<256> doc;
-    doc["device_id"] = deviceId;
-    doc["timestamp"] = millis() / 1000;
+    doc["device_id"] = this->deviceId;  // Use stored device ID
+    doc["card_uid"] = "";  // Will fill with hex string below
 
     // Convert UID to hex string
     char uidStr[32];
@@ -122,12 +108,13 @@ bool NetworkHandler::sendCardTap(const char* deviceId, uint8_t* uid, uint8_t uid
         snprintf(uidStr + (i * 2), 3, "%02X", uid[i]);
     }
     doc["card_uid"] = uidStr;
+    doc["timestamp"] = millis() / 1000;
 
     // Serialize to string
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    return sendHttpPost(API_ENDPOINT_TAP, jsonStr.c_str());
+    return sendHttpPost(DEVICE_TAP_ENDPOINT, jsonStr.c_str());
 }
 
 bool NetworkHandler::sendHeartbeat(const char* deviceId, const char* firmwareVersion) {
@@ -135,33 +122,38 @@ bool NetworkHandler::sendHeartbeat(const char* deviceId, const char* firmwareVer
         return false;
     }
 
-    // Build JSON payload
+    unsigned long now = millis();
+    lastHeartbeatTime = now;
+
+    Serial.println("[NetworkHandler] Sending heartbeat to Supabase Edge Function");
+
+    // Build JSON payload for Supabase Edge Function
     StaticJsonDocument<256> doc;
-    doc["device_id"] = deviceId;
+    doc["device_id"] = this->deviceId;  // Use stored device ID
     doc["firmware_version"] = firmwareVersion;
     doc["free_heap"] = ESP.getFreeHeap();
     doc["wifi_rssi"] = getWiFiSignal();
-    doc["uptime"] = millis() / 1000;
+    doc["uptime"] = now / 1000;
 
     // Serialize to string
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    return sendHttpPost(API_ENDPOINT_HEARTBEAT, jsonStr.c_str());
+    return sendHttpPost(DEVICE_HEARTBEAT_ENDPOINT, jsonStr.c_str());
 }
 
 bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload) {
     HTTPClient http;
 
-    // Build full URL
-    String url = String(SERVER_API_BASE_URL) + endpoint;
+    // Build full Supabase Edge Function URL
+    String url = String(supabaseFunctionsUrl) + endpoint;
 
     Serial.printf("[NetworkHandler] POST to %s\n", url.c_str());
     Serial.printf("[NetworkHandler] Payload: %s\n", jsonPayload);
 
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader(API_KEY_HEADER, apiKey);
+    http.addHeader(API_KEY_HEADER, apiKey);  // "x-device-api-key" header
     http.setTimeout(HTTP_TIMEOUT_MS);
 
     int httpCode = http.POST(jsonPayload);
@@ -170,11 +162,16 @@ bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload)
         Serial.printf("[NetworkHandler] POST success: %d\n", httpCode);
         String response = http.getString();
 
-        // Parse response for attendance result
+        Serial.printf("[NetworkHandler] Response: %s\n", response.c_str());
+
+        // Parse response for attendance result and commands
         DynamicJsonDocument responseDoc(512);
         DeserializationError error = deserializeJson(responseDoc, response);
-        if (!error && responseDoc.containsKey("status")) {
-            if (eventCallback) {
+        if (!error) {
+            // Process response (may contain camper name, status, or emergency commands)
+            parseResponseCommand(response.c_str());
+
+            if (eventCallback && responseDoc.containsKey("status")) {
                 const char* status = responseDoc["status"];
                 eventCallback("ATTENDANCE_RESULT", status);
             }
@@ -191,9 +188,35 @@ bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload)
 }
 
 void NetworkHandler::buildAuthHeaders() {
-    // Load API key from storage
-    // This is typically loaded from config.json on SD card
-    strncpy(apiKey, "DEFAULT_API_KEY", MAX_API_KEY_LENGTH - 1);
+    // API key is loaded from config.json on SD card during initialization
+    // This is called to refresh headers if needed
+    Serial.printf("[NetworkHandler] Using API key: %s\n", apiKey);
+}
+
+void NetworkHandler::parseResponseCommand(const char* jsonStr) {
+    // Parse response for emergency commands or other server-sent directives
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, jsonStr);
+
+    if (error) {
+        Serial.printf("[NetworkHandler] Failed to parse response: %s\n", error.c_str());
+        return;
+    }
+
+    // Check for emergency command
+    if (doc.containsKey("emergency")) {
+        const char* emergencyType = doc["emergency"];
+        if (eventCallback) {
+            eventCallback("EMERGENCY_COMMAND", emergencyType);
+        }
+    }
+
+    // Check for firmware update command
+    if (doc.containsKey("firmware_update")) {
+        if (eventCallback) {
+            eventCallback("FIRMWARE_UPDATE", "");
+        }
+    }
 }
 
 bool NetworkHandler::connectToServer() {
@@ -201,17 +224,9 @@ bool NetworkHandler::connectToServer() {
         return false;
     }
 
-    Serial.println("[NetworkHandler] Connecting to server...");
+    Serial.println("[NetworkHandler] Server connection established (HTTP polling mode)");
 
-    // Convert SERVER_API_BASE_URL to hostname for WebSocket
-    String wsUrl = String(SERVER_API_BASE_URL);
-    wsUrl.replace("http://", "");
-    wsUrl.replace("https://", "");
-
-    // TODO: Implement WebSocket connection with proper URL parsing
-    // For now, return success (HTTP-only mode)
     serverConnected = true;
-    wsLastPingTime = millis();
 
     if (eventCallback) {
         eventCallback("SERVER_CONNECTED", "");
@@ -220,20 +235,6 @@ bool NetworkHandler::connectToServer() {
     return true;
 }
 
-void NetworkHandler::subscribeToCommands() {
-    // Subscribe to command WebSocket channel
-    if (wsClient && serverConnected) {
-        String msg = "{\"type\": \"subscribe\", \"channel\": \"commands\"}";
-        wsClient->sendTXT(msg);
-    }
-}
-
-void NetworkHandler::unsubscribeFromCommands() {
-    if (wsClient && serverConnected) {
-        String msg = "{\"type\": \"unsubscribe\", \"channel\": \"commands\"}";
-        wsClient->sendTXT(msg);
-    }
-}
 
 void NetworkHandler::startConfigServer(uint16_t port) {
     if (configServerRunning || !configServer) return;
@@ -303,51 +304,6 @@ void NetworkHandler::handleWiFiDisconnected() {
     stopConfigServer();
 }
 
-void NetworkHandler::handleWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
-    switch (type) {
-    case WStype_CONNECTED:
-        Serial.println("[NetworkHandler] WebSocket connected");
-        subscribeToCommands();
-        break;
-
-    case WStype_TEXT:
-        Serial.printf("[NetworkHandler] WebSocket text: %s\n", (char*)payload);
-        {
-            char jsonStr[length + 1];
-            memcpy(jsonStr, payload, length);
-            jsonStr[length] = '\0';
-            processServerCommand(jsonStr);
-        }
-        break;
-
-    case WStype_DISCONNECTED:
-        Serial.println("[NetworkHandler] WebSocket disconnected");
-        serverConnected = false;
-        break;
-
-    default:
-        break;
-    }
-}
-
-void NetworkHandler::processServerCommand(const char* jsonStr) {
-    DynamicJsonDocument doc(512);
-    DeserializationError error = deserializeJson(doc, jsonStr);
-
-    if (error) {
-        Serial.printf("[NetworkHandler] JSON parse error: %s\n", error.c_str());
-        return;
-    }
-
-    if (doc.containsKey("command")) {
-        const char* command = doc["command"];
-        const char* param = doc.containsKey("param") ? doc["param"] : "";
-
-        if (eventCallback) {
-            eventCallback("SERVER_COMMAND", command);
-        }
-    }
-}
 
 void NetworkHandler::parseDeviceConfig(const JsonDocument& doc) {
     if (doc.containsKey("device_id")) {

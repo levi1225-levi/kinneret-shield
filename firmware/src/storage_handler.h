@@ -13,6 +13,15 @@ typedef struct {
     bool synced;
 } AttendanceEvent;
 
+typedef struct {
+    char device_id[MAX_DEVICE_ID_LENGTH];
+    char api_key[MAX_API_KEY_LENGTH];
+    char location_name[MAX_ROOM_NAME_LENGTH];
+    char supabase_url[256];
+    char wifi_ssid[64];
+    char wifi_password[64];
+} DeviceConfig;
+
 class StorageHandler {
 public:
     StorageHandler();
@@ -22,8 +31,8 @@ public:
     void init();
 
     // Configuration management
-    bool loadDeviceConfig(char* deviceId, char* roomName);
-    bool saveDeviceConfig(const char* deviceId, const char* roomName, const char* apiKey);
+    bool loadDeviceConfig(DeviceConfig& config);
+    bool saveDeviceConfig(const DeviceConfig& config);
 
     // Attendance logging
     void logAttendanceEvent(uint8_t* uid, uint8_t uidLength);
@@ -76,9 +85,7 @@ private:
     unsigned long lastCSVCheck;
 
     // Configuration cache
-    char cachedDeviceId[MAX_DEVICE_ID_LENGTH];
-    char cachedRoomName[MAX_ROOM_NAME_LENGTH];
-    char cachedApiKey[MAX_API_KEY_LENGTH];
+    DeviceConfig cachedConfig;
 };
 
 #endif // STORAGE_HANDLER_H

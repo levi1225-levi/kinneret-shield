@@ -57,17 +57,18 @@
 #define SD_SCK_PIN 36  // SPI Clock
 
 // ============================================================================
-// NETWORK & SERVER
+// NETWORK & SERVER (Supabase Edge Functions)
 // ============================================================================
 #define WIFI_MANAGER_AP_NAME "KinneretShield"
 #define WIFI_RECONNECT_INTERVAL_MS 5000
 #define WIFI_CONNECT_TIMEOUT_MS 30000
 
-// Server API configuration
-#define SERVER_API_BASE_URL "http://attendance.school.local"
-#define API_ENDPOINT_TAP "/api/attendance/tap"
-#define API_ENDPOINT_HEARTBEAT "/api/devices/heartbeat"
-#define API_KEY_HEADER "X-API-Key"
+// Supabase configuration (override with values from SD config.json)
+#define SUPABASE_URL "https://YOUR_PROJECT.supabase.co"
+#define SUPABASE_FUNCTIONS_URL "https://YOUR_PROJECT.supabase.co/functions/v1"
+#define DEVICE_TAP_ENDPOINT "/device-tap"
+#define DEVICE_HEARTBEAT_ENDPOINT "/device-heartbeat"
+#define API_KEY_HEADER "x-device-api-key"
 #define DEVICE_ID "DEFAULT_DEVICE_01"  // Override from SD config
 
 // ============================================================================

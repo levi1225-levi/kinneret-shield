@@ -101,7 +101,7 @@ export const SecurityDashboard: React.FC = () => {
   const handleEmergencyTrigger = useCallback(() => {
     Alert.alert(
       'Trigger Emergency',
-      'Are you sure you want to initiate an emergency? This will alert all staff and students.',
+      'Are you sure you want to initiate an emergency? This will alert all camp staff and counselors.',
       [
         { text: 'Cancel', onPress: () => {}, style: 'cancel' },
         {
@@ -213,7 +213,7 @@ export const SecurityDashboard: React.FC = () => {
           style={styles.statCard}
         />
         <StatCard
-          title="Building Occupancy"
+          title="Camp Occupancy"
           value={buildingOccupancy}
           icon="account-multiple"
           color={Colors.info}
