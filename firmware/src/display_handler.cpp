@@ -6,8 +6,6 @@ DisplayHandler::DisplayHandler()
       initialized(false),
       lastUpdateTime(0),
       animationFrame(0),
-      animationDirection(true),
-      breathingBrightness(0),
       spinnerFrame(0),
       lastAnimationUpdate(0) {
     memset(lastError, 0, 64);
@@ -19,29 +17,30 @@ DisplayHandler::~DisplayHandler() {
 }
 
 void DisplayHandler::init() {
-    Serial.println("[DisplayHandler] Initializing...");
+    Serial.println("[DisplayHandler] Initializing SSD1309 OLED...");
 
-    // Create SSD1306 display object
-    display = new Adafruit_SSD1306(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
+    // Create SSD1306Wire display (works with SSD1309 too)
+    // GEOMETRY_128_64 for 128x64, SDA=GPIO10, SCL=GPIO9
+    display = new SSD1306Wire(OLED_ADDRESS, I2C_SDA, I2C_SCL);
 
-    // Initialize the display
-    if (!display->begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-        Serial.println("[DisplayHandler] SSD1306 initialization failed!");
-        strncpy(lastError, "SSD1306 Init Failed", 63);
+    if (!display->init()) {
+        Serial.println("[DisplayHandler] SSD1309 initialization failed!");
+        strncpy(lastError, "SSD1309 Init Failed", 63);
         initialized = false;
         return;
     }
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
-    display->clearDisplay();
+    display->flipScreenVertically();
+    display->setFont(ArialMT_Plain_10);
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->clear();
     display->display();
 
     initialized = true;
     lastUpdateTime = millis();
     strncpy(currentScreen, "BOOT", 31);
 
-    Serial.println("[DisplayHandler] Initialization complete");
+    Serial.println("[DisplayHandler] SSD1309 OLED initialized successfully");
 }
 
 void DisplayHandler::update() {
@@ -49,7 +48,6 @@ void DisplayHandler::update() {
 
     unsigned long now = millis();
 
-    // Update animations periodically
     if (now - lastAnimationUpdate > OLED_UPDATE_INTERVAL_MS) {
         lastAnimationUpdate = now;
         animationFrame = (animationFrame + 1) % 100;
@@ -59,7 +57,7 @@ void DisplayHandler::update() {
 
 void DisplayHandler::clearDisplay() {
     if (!display) return;
-    display->clearDisplay();
+    display->clear();
 }
 
 void DisplayHandler::updateDisplay() {
@@ -67,91 +65,48 @@ void DisplayHandler::updateDisplay() {
     display->display();
 }
 
-void DisplayHandler::drawCenteredText(int y, const char* text, int size) {
+void DisplayHandler::drawCenteredText(int y, const char* text, int fontSize) {
     if (!display) return;
 
-    display->setTextSize(size);
-    display->setTextColor(SSD1306_WHITE);
-
-    int16_t x1, y1;
-    uint16_t w, h;
-    display->getTextBounds(text, 0, y, &x1, &y1, &w, &h);
-    int x = (OLED_WIDTH - w) / 2;
-
-    display->setCursor(x, y);
-    display->println(text);
-}
-
-void DisplayHandler::drawRightAlignedText(int x, int y, const char* text, int size) {
-    if (!display) return;
-
-    display->setTextSize(size);
-    display->setTextColor(SSD1306_WHITE);
-    display->setCursor(x, y);
-    display->println(text);
-}
-
-void DisplayHandler::drawWiFiSignal(int rssi) {
-    if (!display) return;
-
-    // Draw WiFi icon in top right
-    int x = OLED_WIDTH - 20;
-    int y = 2;
-
-    if (rssi > -50) {
-        display->drawRect(x, y, 3, 3, SSD1306_WHITE);
-        display->drawRect(x + 4, y + 1, 3, 4, SSD1306_WHITE);
-        display->drawRect(x + 8, y + 2, 3, 5, SSD1306_WHITE);
-        display->drawRect(x + 12, y + 3, 3, 6, SSD1306_WHITE);
-    } else if (rssi > -60) {
-        display->drawRect(x, y, 3, 3, SSD1306_WHITE);
-        display->drawRect(x + 4, y + 1, 3, 4, SSD1306_WHITE);
-        display->drawRect(x + 8, y + 2, 3, 5, SSD1306_WHITE);
-    } else if (rssi > -70) {
-        display->drawRect(x, y, 3, 3, SSD1306_WHITE);
-        display->drawRect(x + 4, y + 1, 3, 4, SSD1306_WHITE);
-    } else {
-        display->drawRect(x, y, 3, 3, SSD1306_WHITE);
+    switch (fontSize) {
+    case 2:
+        display->setFont(ArialMT_Plain_16);
+        break;
+    case 3:
+        display->setFont(ArialMT_Plain_24);
+        break;
+    default:
+        display->setFont(ArialMT_Plain_10);
+        break;
     }
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->drawString(OLED_WIDTH / 2, y, text);
 }
 
 void DisplayHandler::drawProgressBar(int y, int percent) {
     if (!display) return;
 
-    int barWidth = OLED_WIDTH - 10;
+    int barWidth = OLED_WIDTH - 20;
     int filledWidth = (barWidth * percent) / 100;
 
-    display->drawRect(5, y, barWidth, 8, SSD1306_WHITE);
-    display->fillRect(5, y, filledWidth, 8, SSD1306_WHITE);
+    display->drawRect(10, y, barWidth, 10);
+    display->fillRect(10, y, filledWidth, 10);
 }
 
 void DisplayHandler::drawCheckmark() {
     if (!display) return;
-
-    // Simple checkmark pattern
-    display->drawLine(40, 30, 50, 40, SSD1306_WHITE);
-    display->drawLine(50, 40, 70, 20, SSD1306_WHITE);
-    display->drawLine(40, 31, 50, 41, SSD1306_WHITE);
-    display->drawLine(50, 41, 70, 21, SSD1306_WHITE);
+    display->drawLine(50, 8, 58, 16);
+    display->drawLine(58, 16, 74, 0);
+    display->drawLine(50, 9, 58, 17);
+    display->drawLine(58, 17, 74, 1);
 }
 
 void DisplayHandler::drawXMark() {
     if (!display) return;
-
-    // Simple X mark pattern
-    display->drawLine(40, 20, 70, 50, SSD1306_WHITE);
-    display->drawLine(70, 20, 40, 50, SSD1306_WHITE);
-    display->drawLine(40, 21, 70, 51, SSD1306_WHITE);
-    display->drawLine(70, 21, 40, 51, SSD1306_WHITE);
-}
-
-void DisplayHandler::drawSpinner(int x, int y, int frame) {
-    if (!display) return;
-
-    const char* spinner[] = {"|", "/", "-", "\\"};
-    display->setTextSize(2);
-    display->setCursor(x, y);
-    display->println(spinner[frame % 4]);
+    display->drawLine(52, 0, 74, 18);
+    display->drawLine(74, 0, 52, 18);
+    display->drawLine(52, 1, 74, 19);
+    display->drawLine(74, 1, 52, 19);
 }
 
 // ============================================================================
@@ -164,25 +119,13 @@ void DisplayHandler::showBootScreen(const char* version) {
     clearDisplay();
     strncpy(currentScreen, "BOOT", 31);
 
-    // Main title
-    display->setTextSize(2);
-    display->setTextColor(SSD1306_WHITE);
-    drawCenteredText(5, "Kinneret", 2);
+    drawCenteredText(2, "Kinneret", 2);
+    drawCenteredText(20, "Shield", 2);
+    drawCenteredText(40, "Camp Northland", 1);
 
-    // Subtitle
-    display->setTextSize(1);
-    drawCenteredText(22, "Shield", 2);
-
-    // Camp name
-    drawCenteredText(38, "Camp Northland", 1);
-
-    // Version
     char versionStr[32];
     snprintf(versionStr, 31, "v%s", version);
-    drawCenteredText(48, versionStr, 1);
-
-    // Status
-    drawCenteredText(58, "Initializing...", 1);
+    drawCenteredText(52, versionStr, 1);
 
     updateDisplay();
 }
@@ -193,22 +136,12 @@ void DisplayHandler::showIdleScreen(const char* roomName) {
     clearDisplay();
     strncpy(currentScreen, "IDLE", 31);
 
-    // Location name (large, centered)
-    display->setTextSize(2);
-    display->setTextColor(SSD1306_WHITE);
-    drawCenteredText(5, roomName, 2);
+    drawCenteredText(0, roomName, 2);
+    display->drawLine(0, 20, OLED_WIDTH, 20);
 
-    // Divider line
-    display->drawLine(0, 20, OLED_WIDTH, 20, SSD1306_WHITE);
-
-    // Status
-    display->setTextSize(1);
-    drawCenteredText(28, "Ready", 1);
+    drawCenteredText(26, "Ready", 1);
     drawCenteredText(38, "Tap Wristband", 1);
-    drawCenteredText(48, "to Check In", 1);
-
-    // WiFi signal (top right)
-    drawWiFiSignal(-50);
+    drawCenteredText(50, "to Check In", 1);
 
     updateDisplay();
 }
@@ -219,18 +152,14 @@ void DisplayHandler::showWiFiSetupScreen(const char* apName) {
     clearDisplay();
     strncpy(currentScreen, "WIFI_SETUP", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
+    drawCenteredText(0, "WiFi Setup Required", 1);
+    display->drawLine(0, 14, OLED_WIDTH, 14);
 
-    drawCenteredText(5, "WiFi Setup Required", 1);
-
-    display->drawLine(0, 15, OLED_WIDTH, 15, SSD1306_WHITE);
-
-    drawCenteredText(20, "Connect to:", 1);
+    drawCenteredText(18, "Connect to:", 1);
     drawCenteredText(30, apName, 1);
 
-    drawCenteredText(45, "Then open:", 1);
-    drawCenteredText(55, "192.168.4.1", 1);
+    drawCenteredText(44, "Then open:", 1);
+    drawCenteredText(54, "192.168.4.1", 1);
 
     updateDisplay();
 }
@@ -241,11 +170,8 @@ void DisplayHandler::showStatusScreen(const char* line1, const char* line2) {
     clearDisplay();
     strncpy(currentScreen, "STATUS", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
-
-    drawCenteredText(20, line1, 2);
-    drawCenteredText(40, line2, 1);
+    drawCenteredText(15, line1, 2);
+    drawCenteredText(38, line2, 1);
 
     updateDisplay();
 }
@@ -256,11 +182,13 @@ void DisplayHandler::showProcessingScreen() {
     clearDisplay();
     strncpy(currentScreen, "PROCESSING", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
+    drawCenteredText(8, "Processing...", 2);
 
-    drawCenteredText(10, "Processing...", 2);
-    drawSpinner(58, 35, spinnerFrame);
+    const char* spinner[] = {"|", "/", "-", "\\"};
+    display->setFont(ArialMT_Plain_16);
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->drawString(OLED_WIDTH / 2, 30, spinner[spinnerFrame % 4]);
+
     drawCenteredText(50, "Please wait", 1);
 
     updateDisplay();
@@ -272,32 +200,25 @@ void DisplayHandler::showSuccessScreen(const char* camperName, const char* statu
     clearDisplay();
     strncpy(currentScreen, "SUCCESS", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
-
-    // Checkmark
     drawCheckmark();
 
-    // Camper name
-    drawCenteredText(25, camperName, 2);
+    drawCenteredText(22, camperName, 2);
 
-    // Status (Checked In or Checked Out)
     char statusMsg[64];
-    if (strcmp(status, "check-in") == 0 || strcmp(status, "in") == 0) {
+    if (strcmp(status, "check_in") == 0 || strcmp(status, "check-in") == 0 || strcmp(status, "in") == 0) {
         snprintf(statusMsg, 63, "Checked In");
-    } else if (strcmp(status, "check-out") == 0 || strcmp(status, "out") == 0) {
+    } else if (strcmp(status, "check_out") == 0 || strcmp(status, "check-out") == 0 || strcmp(status, "out") == 0) {
         snprintf(statusMsg, 63, "Checked Out");
     } else {
         snprintf(statusMsg, 63, "%s", status);
     }
-    drawCenteredText(40, statusMsg, 1);
+    drawCenteredText(42, statusMsg, 1);
 
-    // Time
     char timeStr[32];
     time_t now = time(nullptr);
     struct tm* timeinfo = localtime(&now);
     strftime(timeStr, 31, "%H:%M", timeinfo);
-    drawCenteredText(52, timeStr, 1);
+    drawCenteredText(54, timeStr, 1);
 
     updateDisplay();
 }
@@ -308,15 +229,9 @@ void DisplayHandler::showErrorScreen(const char* errorMsg) {
     clearDisplay();
     strncpy(currentScreen, "ERROR", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
-
-    // X mark
     drawXMark();
-
-    // Error message (examples: "Unknown wristband", "Not registered", etc.)
-    drawCenteredText(35, errorMsg, 1);
-    drawCenteredText(48, "Try again", 1);
+    drawCenteredText(28, errorMsg, 1);
+    drawCenteredText(42, "Try again", 1);
 
     updateDisplay();
 }
@@ -327,19 +242,13 @@ void DisplayHandler::showEmergencyScreen(const char* emergencyType) {
     clearDisplay();
     strncpy(currentScreen, "EMERGENCY", 31);
 
-    display->setTextSize(2);
-    display->setTextColor(SSD1306_WHITE);
-
-    // Flashing effect with animation frame
     if ((animationFrame / 10) % 2) {
-        drawCenteredText(10, "ALERT!", 2);
-        drawCenteredText(30, emergencyType, 2);
-        display->drawRect(0, 0, OLED_WIDTH, OLED_HEIGHT, SSD1306_WHITE);
+        drawCenteredText(5, "ALERT!", 3);
+        drawCenteredText(35, emergencyType, 2);
+        display->drawRect(0, 0, OLED_WIDTH, OLED_HEIGHT);
     } else {
-        clearDisplay();
-        display->setTextSize(1);
-        drawCenteredText(25, "EMERGENCY MODE", 1);
-        drawCenteredText(35, emergencyType, 1);
+        drawCenteredText(20, "EMERGENCY MODE", 1);
+        drawCenteredText(34, emergencyType, 2);
     }
 
     updateDisplay();
@@ -351,19 +260,9 @@ void DisplayHandler::showOfflineScreen() {
     clearDisplay();
     strncpy(currentScreen, "OFFLINE", 31);
 
-    display->setTextSize(2);
-    display->setTextColor(SSD1306_WHITE);
-
-    drawCenteredText(12, "Offline Mode", 1);
-
-    display->setTextSize(1);
-    drawCenteredText(28, "No Supabase connection", 1);
-    drawCenteredText(38, "Local logging enabled", 1);
-
-    // Show queued event count if available
-    char queuedStr[32];
-    snprintf(queuedStr, 31, "Queued: %d", 0);  // Would be passed as parameter ideally
-    drawCenteredText(50, queuedStr, 1);
+    drawCenteredText(5, "Offline Mode", 2);
+    drawCenteredText(28, "No server connection", 1);
+    drawCenteredText(40, "Local logging enabled", 1);
 
     updateDisplay();
 }
@@ -374,20 +273,15 @@ void DisplayHandler::showFirmwareUpdateScreen(int progress) {
     clearDisplay();
     strncpy(currentScreen, "FIRMWARE_UPDATE", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
+    drawCenteredText(5, "Firmware Update", 2);
 
-    drawCenteredText(10, "Firmware Update", 2);
-
-    // Progress percentage
     char progressStr[16];
     snprintf(progressStr, 15, "%d%%", progress);
-    drawCenteredText(30, progressStr, 1);
+    drawCenteredText(28, progressStr, 1);
 
-    // Progress bar
     drawProgressBar(40, progress);
 
-    drawCenteredText(55, "DO NOT POWER OFF", 1);
+    drawCenteredText(54, "DO NOT POWER OFF", 1);
 
     updateDisplay();
 }
@@ -398,16 +292,76 @@ void DisplayHandler::showStatsScreen(int checkinCount) {
     clearDisplay();
     strncpy(currentScreen, "STATS", 31);
 
-    display->setTextSize(1);
-    display->setTextColor(SSD1306_WHITE);
-
-    drawCenteredText(10, "Today's Statistics", 1);
-
-    display->drawLine(0, 20, OLED_WIDTH, 20, SSD1306_WHITE);
+    drawCenteredText(5, "Today's Statistics", 1);
+    display->drawLine(0, 18, OLED_WIDTH, 18);
 
     char statsStr[64];
     snprintf(statsStr, 63, "Check-ins: %d", checkinCount);
-    drawCenteredText(35, statsStr, 1);
+    drawCenteredText(30, statsStr, 1);
+
+    updateDisplay();
+}
+
+// ============================================================================
+// PROGRAM MODE SCREENS
+// ============================================================================
+
+void DisplayHandler::showProgramModeScreen(const char* roomName) {
+    if (!display) return;
+
+    clearDisplay();
+    strncpy(currentScreen, "PROGRAM", 31);
+
+    drawCenteredText(0, "PROGRAM MODE", 2);
+    display->drawLine(0, 20, OLED_WIDTH, 20);
+
+    drawCenteredText(26, "Tap wristband", 1);
+    drawCenteredText(38, "to register", 1);
+    drawCenteredText(52, roomName, 1);
+
+    updateDisplay();
+}
+
+void DisplayHandler::showProgramProcessingScreen() {
+    if (!display) return;
+
+    clearDisplay();
+    strncpy(currentScreen, "PROG_PROCESS", 31);
+
+    drawCenteredText(8, "Registering...", 2);
+
+    const char* spinner[] = {"|", "/", "-", "\\"};
+    display->setFont(ArialMT_Plain_16);
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->drawString(OLED_WIDTH / 2, 30, spinner[spinnerFrame % 4]);
+
+    drawCenteredText(50, "Please wait", 1);
+
+    updateDisplay();
+}
+
+void DisplayHandler::showProgramSuccessScreen(const char* cardUid) {
+    if (!display) return;
+
+    clearDisplay();
+    strncpy(currentScreen, "PROG_SUCCESS", 31);
+
+    drawCheckmark();
+    drawCenteredText(22, "Registered!", 2);
+    drawCenteredText(44, cardUid, 1);
+
+    updateDisplay();
+}
+
+void DisplayHandler::showProgramErrorScreen(const char* errorMsg) {
+    if (!display) return;
+
+    clearDisplay();
+    strncpy(currentScreen, "PROG_ERROR", 31);
+
+    drawXMark();
+    drawCenteredText(28, errorMsg, 1);
+    drawCenteredText(42, "Try again", 1);
 
     updateDisplay();
 }

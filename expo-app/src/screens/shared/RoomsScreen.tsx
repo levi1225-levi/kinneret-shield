@@ -68,6 +68,16 @@ export const RoomsScreen: React.FC<RoomsScreenProps> = ({ navigation }) => {
           const occMap: Record<string, RoomOccupancy> = {};
           occData.forEach(occ => { occMap[occ.roomId] = occ; });
           setOccupancies(occMap);
+        } else {
+          // Fetch occupancies from real API
+          const occData = await roomsAPI.getAllOccupancies();
+          const occMap: Record<string, RoomOccupancy> = {};
+          occData.forEach((occ: any) => {
+            // The RPC may return id or roomId depending on the function definition
+            const key = occ.roomId || occ.id;
+            occMap[key] = occ;
+          });
+          setOccupancies(occMap);
         }
 
         setHasMorePages(pageNum < response.pages);

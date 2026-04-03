@@ -44,6 +44,11 @@ public:
     // Manual state transitions for testing
     void forceState(DeviceState state);
 
+    // Wristband programming mode
+    void enterProgramMode();
+    void exitProgramMode();
+    void onWristbandProgrammed(bool success, const char* cardUid, const char* message);
+
     // Getters for subsystems
     NFCHandler* getNFCHandler() { return nfcHandler; }
     DisplayHandler* getDisplayHandler() { return displayHandler; }
@@ -72,6 +77,11 @@ private:
     void performStateEmergencyLogic();
     void performStateFirmwareUpdateLogic();
     void performStateOfflineLogic();
+    void performStateProgramModeLogic();
+    void performStateProgramCardDetectedLogic();
+    void performStateProgramProcessingLogic();
+    void performStateProgramSuccessLogic();
+    void performStateProgramFailureLogic();
 
     // Error recovery
     void handleError(const char* errorMsg);
@@ -114,6 +124,11 @@ private:
     char pendingFirmwareVersion[32];
     int firmwareUpdateProgress;
     bool firmwareUpdateInProgress;
+
+    // Wristband programming mode state
+    bool inProgramMode;
+    unsigned long programModeEnterTime;
+    char lastProgrammedUID[32];
 };
 
 #endif // STATE_MACHINE_H

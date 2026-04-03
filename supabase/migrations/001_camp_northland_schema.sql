@@ -126,7 +126,7 @@ CREATE INDEX idx_attendance_location ON attendance_records(location_id);
 CREATE INDEX idx_attendance_device ON attendance_records(device_id);
 CREATE INDEX idx_attendance_status ON attendance_records(status);
 CREATE INDEX idx_attendance_check_in ON attendance_records(check_in_at DESC);
-CREATE INDEX idx_attendance_date ON attendance_records(DATE(check_in_at));
+-- idx_attendance_check_in above covers date queries
 
 -- ─── ALERTS ───────────────────────────────────────────────
 

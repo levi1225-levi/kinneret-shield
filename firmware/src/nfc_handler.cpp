@@ -1,5 +1,5 @@
 #include "nfc_handler.h"
-#include <Wire.h>
+#include <SPI.h>
 
 NFCHandler::NFCHandler()
     : nfc(nullptr),
@@ -20,21 +20,12 @@ NFCHandler::~NFCHandler() {
 }
 
 void NFCHandler::init() {
-    Serial.println("[NFCHandler] Initializing...");
+    Serial.println("[NFCHandler] Initializing PN532 via SPI...");
 
-    // Initialize I2C
-    Wire.begin(I2C_SDA, I2C_SCL);
-    delay(100);
+    // Initialize PN532 NFC reader via software SPI
+    nfc = new Adafruit_PN532(PN532_SCK_PIN, PN532_MISO_PIN, PN532_MOSI_PIN, PN532_SS_PIN);
 
-    // Initialize PN532 NFC reader
-    nfc = new Adafruit_PN532(I2C_SCL, I2C_SDA);
-
-    if (!nfc->begin()) {
-        Serial.println("[NFCHandler] PN532 initialization failed!");
-        strncpy(lastError, "PN532 Init Failed", 63);
-        initialized = false;
-        return;
-    }
+    nfc->begin();
 
     // Get firmware version
     uint32_t versiondata = nfc->getFirmwareVersion();
@@ -45,7 +36,10 @@ void NFCHandler::init() {
         return;
     }
 
-    Serial.printf("[NFCHandler] Found PN532 firmware version: 0x%08X\n", versiondata);
+    Serial.printf("[NFCHandler] Found PN532 chip: 0x%02X firmware: %d.%d\n",
+        (versiondata >> 24) & 0xFF,
+        (versiondata >> 16) & 0xFF,
+        (versiondata >> 8) & 0xFF);
 
     // Configure PN532 for passive mode A (ISO14443Type A)
     nfc->setPassiveActivationRetries(0xFF);
@@ -75,7 +69,7 @@ void NFCHandler::update() {
     uint8_t uidLength;
 
     // Check for card
-    bool cardPresent = nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+    bool cardPresent = nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 50);
 
     if (cardPresent) {
         // Check for debounce - same card within 3 seconds
@@ -105,7 +99,6 @@ void NFCHandler::update() {
         }
     } else {
         // No card present - this is normal, not an error
-        // Only count as error if we were expecting a card or getting consistent failures
     }
 }
 
@@ -115,7 +108,7 @@ bool NFCHandler::readCardUID(uint8_t* uid, uint8_t* uidLength) {
         return false;
     }
 
-    bool cardPresent = nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength);
+    bool cardPresent = nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, 50);
 
     if (!cardPresent) {
         handleScanError("No card detected");

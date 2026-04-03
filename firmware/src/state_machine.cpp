@@ -27,7 +27,9 @@ StateMachine::StateMachine()
       isConnectedToServer(false),
       isConnectedToWiFi(false),
       firmwareUpdateProgress(0),
-      firmwareUpdateInProgress(false) {
+      firmwareUpdateInProgress(false),
+      inProgramMode(false),
+      programModeEnterTime(0) {
     memset(deviceId, 0, MAX_DEVICE_ID_LENGTH);
     memset(roomName, 0, MAX_ROOM_NAME_LENGTH);
     memset(lastCardUID, 0, 10);
@@ -35,6 +37,7 @@ StateMachine::StateMachine()
     memset(lastStudentStatus, 0, 32);
     memset(pendingFirmwareUrl, 0, 256);
     memset(pendingFirmwareVersion, 0, 32);
+    memset(lastProgrammedUID, 0, 32);
 }
 
 StateMachine::~StateMachine() {
@@ -54,7 +57,11 @@ void StateMachine::init() {
     storageHandler->init();
 
     // Load configuration from storage
-    storageHandler->loadDeviceConfig(deviceId, roomName);
+    DeviceConfig config;
+    if (storageHandler->loadDeviceConfig(config)) {
+        strncpy(deviceId, config.device_id, MAX_DEVICE_ID_LENGTH - 1);
+        strncpy(roomName, config.location_name, MAX_ROOM_NAME_LENGTH - 1);
+    }
 
     displayHandler = new DisplayHandler();
     displayHandler->init();
@@ -73,6 +80,14 @@ void StateMachine::init() {
 
     networkHandler = new NetworkHandler();
     networkHandler->init();
+
+    // Pass SD card config to network handler
+    DeviceConfig netConfig;
+    if (storageHandler->loadDeviceConfig(netConfig)) {
+        networkHandler->parseDeviceConfig(netConfig);
+        Serial.printf("[StateMachine] Loaded config - Device: %s, API key: %.8s...\n",
+            netConfig.device_id, netConfig.api_key);
+    }
 
     stateEnterTime = millis();
     lastHeartbeat = millis();
@@ -131,6 +146,10 @@ void StateMachine::onStateEnter(DeviceState state) {
         if (displayHandler) displayHandler->showWiFiSetupScreen(WIFI_MANAGER_AP_NAME);
         if (ledHandler) ledHandler->setPattern(LED_PATTERN_PULSE, LED_COLOR_ORANGE);
         retryCount = 0;
+        // Start WiFi manager once - it blocks until connected or timeout
+        if (networkHandler) {
+            networkHandler->startWiFiManager();
+        }
         break;
 
     case STATE_SERVER_CONNECTING:
@@ -202,6 +221,38 @@ void StateMachine::onStateEnter(DeviceState state) {
         if (displayHandler) displayHandler->showOfflineScreen();
         if (ledHandler) ledHandler->setPattern(LED_PATTERN_PULSE, LED_COLOR_ORANGE);
         break;
+
+    case STATE_PROGRAM_MODE:
+        Serial.println("[StateMachine] Entering PROGRAM_MODE");
+        if (displayHandler) displayHandler->showProgramModeScreen(roomName);
+        if (ledHandler) ledHandler->setPattern(LED_PATTERN_BREATHING, LED_COLOR_MAGENTA);
+        break;
+
+    case STATE_PROGRAM_CARD_DETECTED:
+        Serial.println("[StateMachine] Entering PROGRAM_CARD_DETECTED");
+        if (ledHandler) ledHandler->setPattern(LED_PATTERN_FLASH, LED_COLOR_WHITE);
+        if (audioHandler) audioHandler->playCardBeep();
+        break;
+
+    case STATE_PROGRAM_PROCESSING:
+        Serial.println("[StateMachine] Entering PROGRAM_PROCESSING");
+        if (displayHandler) displayHandler->showProgramProcessingScreen();
+        if (ledHandler) ledHandler->setPattern(LED_PATTERN_SPIN, LED_COLOR_CYAN);
+        break;
+
+    case STATE_PROGRAM_SUCCESS:
+        Serial.println("[StateMachine] Entering PROGRAM_SUCCESS");
+        if (displayHandler) displayHandler->showProgramSuccessScreen(lastProgrammedUID);
+        if (ledHandler) ledHandler->setPattern(LED_PATTERN_SWEEP, LED_COLOR_GREEN);
+        if (audioHandler) audioHandler->playSuccessTone();
+        break;
+
+    case STATE_PROGRAM_FAILURE:
+        Serial.println("[StateMachine] Entering PROGRAM_FAILURE");
+        if (displayHandler) displayHandler->showProgramErrorScreen("Registration Failed");
+        if (ledHandler) ledHandler->setPattern(LED_PATTERN_FLASH, LED_COLOR_RED);
+        if (audioHandler) audioHandler->playFailureTone();
+        break;
     }
 }
 
@@ -258,6 +309,21 @@ void StateMachine::onStateLoop(DeviceState state) {
     case STATE_OFFLINE:
         performStateOfflineLogic();
         break;
+    case STATE_PROGRAM_MODE:
+        performStateProgramModeLogic();
+        break;
+    case STATE_PROGRAM_CARD_DETECTED:
+        performStateProgramCardDetectedLogic();
+        break;
+    case STATE_PROGRAM_PROCESSING:
+        performStateProgramProcessingLogic();
+        break;
+    case STATE_PROGRAM_SUCCESS:
+        performStateProgramSuccessLogic();
+        break;
+    case STATE_PROGRAM_FAILURE:
+        performStateProgramFailureLogic();
+        break;
     }
 }
 
@@ -271,12 +337,8 @@ void StateMachine::performStateBootLogic() {
 void StateMachine::performStateWifiConnectingLogic() {
     if (isConnectedToWiFi) {
         transitionToState(STATE_SERVER_CONNECTING);
-    } else {
-        // Let NetworkHandler manage WiFi connection attempts
-        if (networkHandler) {
-            networkHandler->startWiFiManager();
-        }
     }
+    // startWiFiManager is called once from onStateEnter, not here
 }
 
 void StateMachine::performStateServerConnectingLogic() {
@@ -378,16 +440,33 @@ void StateMachine::onCardDetected(uint8_t* uid, uint8_t uidLength) {
     lastCardUIDLength = uidLength;
     lastCardDetectionTime = now;
 
-    // Log to storage and send to server
-    if (storageHandler) {
-        storageHandler->logAttendanceEvent(uid, uidLength);
+    // Convert UID to string for programming mode
+    char uidString[32];
+    for (int i = 0; i < uidLength && i < 16; i++) {
+        snprintf(uidString + (i * 2), 32 - (i * 2), "%02X", uid[i]);
     }
+    strncpy(lastProgrammedUID, uidString, 31);
 
-    if (networkHandler && isConnectedToServer) {
-        networkHandler->sendCardTap(deviceId, uid, uidLength);
+    // Check if in program mode
+    if (inProgramMode) {
+        Serial.println("[StateMachine] In program mode - sending to program wristband endpoint");
+        if (networkHandler && isConnectedToServer) {
+            networkHandler->sendProgramWristband(deviceId, uid, uidLength);
+        }
+        transitionToState(STATE_PROGRAM_CARD_DETECTED);
+    } else {
+        // Normal check-in mode
+        // Log to storage and send to server
+        if (storageHandler) {
+            storageHandler->logAttendanceEvent(uid, uidLength);
+        }
+
+        if (networkHandler && isConnectedToServer) {
+            networkHandler->sendCardTap(deviceId, uid, uidLength);
+        }
+
+        transitionToState(STATE_CARD_DETECTED);
     }
-
-    transitionToState(STATE_CARD_DETECTED);
 }
 
 void StateMachine::onCardReadError() {
@@ -449,8 +528,16 @@ void StateMachine::onServerCommand(const char* command, const char* param) {
         transitionToState(STATE_IDLE);
     } else if (strcmp(command, "update_config") == 0) {
         if (storageHandler) {
-            storageHandler->loadDeviceConfig(deviceId, roomName);
+            DeviceConfig cfg;
+            if (storageHandler->loadDeviceConfig(cfg)) {
+                strncpy(deviceId, cfg.device_id, MAX_DEVICE_ID_LENGTH - 1);
+                strncpy(roomName, cfg.location_name, MAX_ROOM_NAME_LENGTH - 1);
+            }
         }
+    } else if (strcmp(command, "program_mode") == 0) {
+        enterProgramMode();
+    } else if (strcmp(command, "normal_mode") == 0) {
+        exitProgramMode();
     }
 }
 
@@ -489,4 +576,73 @@ void StateMachine::onFirmwareUpdateComplete(bool success) {
 void StateMachine::forceState(DeviceState state) {
     Serial.printf("[StateMachine] Forcing state: %d\n", state);
     transitionToState(state);
+}
+
+// ============================================================================
+// WRISTBAND PROGRAMMING MODE
+// ============================================================================
+
+void StateMachine::enterProgramMode() {
+    Serial.println("[StateMachine] Entering wristband programming mode");
+    inProgramMode = true;
+    programModeEnterTime = millis();
+    transitionToState(STATE_PROGRAM_MODE);
+}
+
+void StateMachine::exitProgramMode() {
+    Serial.println("[StateMachine] Exiting wristband programming mode");
+    inProgramMode = false;
+    transitionToState(STATE_IDLE);
+}
+
+void StateMachine::onWristbandProgrammed(bool success, const char* cardUid, const char* message) {
+    Serial.printf("[StateMachine] Wristband programming result: %s\n", success ? "success" : "failure");
+
+    if (cardUid) {
+        strncpy(lastProgrammedUID, cardUid, 31);
+    }
+
+    if (success) {
+        transitionToState(STATE_PROGRAM_SUCCESS);
+    } else {
+        transitionToState(STATE_PROGRAM_FAILURE);
+    }
+}
+
+void StateMachine::performStateProgramModeLogic() {
+    unsigned long now = millis();
+
+    // Check for 5-minute timeout
+    if (now - programModeEnterTime > PROGRAM_MODE_TIMEOUT_MS) {
+        Serial.println("[StateMachine] Program mode timeout - exiting");
+        exitProgramMode();
+    }
+}
+
+void StateMachine::performStateProgramCardDetectedLogic() {
+    unsigned long now = millis();
+    if (now - stateEnterTime > 500) {
+        transitionToState(STATE_PROGRAM_PROCESSING);
+    }
+}
+
+void StateMachine::performStateProgramProcessingLogic() {
+    // Waiting for wristband programming to complete
+    // NetworkHandler will call onWristbandProgrammed()
+}
+
+void StateMachine::performStateProgramSuccessLogic() {
+    unsigned long now = millis();
+    if (now - stateEnterTime > PROGRAM_SUCCESS_DURATION_MS) {
+        // Return to program mode, ready for next wristband
+        transitionToState(STATE_PROGRAM_MODE);
+    }
+}
+
+void StateMachine::performStateProgramFailureLogic() {
+    unsigned long now = millis();
+    if (now - stateEnterTime > ERROR_SCREEN_DURATION_MS) {
+        // Return to program mode, ready for retry
+        transitionToState(STATE_PROGRAM_MODE);
+    }
 }

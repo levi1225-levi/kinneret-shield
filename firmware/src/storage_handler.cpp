@@ -30,14 +30,17 @@ void StorageHandler::init() {
         return;
     }
 
-    // Initialize SD card
+    // Initialize SD card (optional - board works fine without it)
     if (initSDCard()) {
         sdCardPresent = true;
         readSDCardInfo();
-        loadSyncQueue();
+        // Don't load sync queue if file doesn't exist
+        if (SD.exists(SYNC_QUEUE_FILE)) {
+            loadSyncQueue();
+        }
         Serial.println("[StorageHandler] SD card initialized");
     } else {
-        Serial.println("[StorageHandler] SD card initialization failed (optional)");
+        Serial.println("[StorageHandler] No SD card - using defaults (this is fine)");
     }
 
     // Load default config
@@ -83,7 +86,7 @@ bool StorageHandler::loadDeviceConfig(DeviceConfig& config) {
         // Use defaults
         strncpy(config.device_id, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
         strncpy(config.location_name, "Waterfront", MAX_ROOM_NAME_LENGTH - 1);
-        strncpy(config.supabase_url, "https://YOUR_PROJECT.supabase.co", 255);
+        strncpy(config.supabase_url, "https://kzpdxqhvszpcehjwmifn.supabase.co", 255);
         strncpy(config.wifi_ssid, "CampNorthland", 63);
         memset(config.api_key, 0, MAX_API_KEY_LENGTH);
         memset(config.wifi_password, 0, 64);
@@ -95,7 +98,7 @@ bool StorageHandler::loadDeviceConfig(DeviceConfig& config) {
         Serial.println("[StorageHandler] Config file not found, using defaults");
         strncpy(config.device_id, "DEFAULT_DEVICE_01", MAX_DEVICE_ID_LENGTH - 1);
         strncpy(config.location_name, "Waterfront", MAX_ROOM_NAME_LENGTH - 1);
-        strncpy(config.supabase_url, "https://YOUR_PROJECT.supabase.co", 255);
+        strncpy(config.supabase_url, "https://kzpdxqhvszpcehjwmifn.supabase.co", 255);
         strncpy(config.wifi_ssid, "CampNorthland", 63);
         memset(config.api_key, 0, MAX_API_KEY_LENGTH);
         memset(config.wifi_password, 0, 64);

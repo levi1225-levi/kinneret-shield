@@ -5,9 +5,8 @@
 #include "config.h"
 #include <WiFi.h>
 #include <WiFiManager.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include "storage_handler.h"
 
 typedef void (*NetworkEventCallback)(const char* event, const char* data);
 
@@ -27,17 +26,17 @@ public:
     bool connectToWiFi(const char* ssid, const char* password);
     bool isWiFiConnected() const { return WiFi.status() == WL_CONNECTED; }
     int getWiFiSignal() const { return WiFi.RSSI(); }
-    const char* getWiFiSSID() const { return WiFi.SSID().c_str(); }
+    const char* getWiFiSSIDStr();
 
     // Server communication
     bool sendCardTap(const char* deviceId, uint8_t* uid, uint8_t uidLength);
+    bool sendProgramWristband(const char* deviceId, uint8_t* uid, uint8_t uidLength);
     bool sendHeartbeat(const char* deviceId, const char* firmwareVersion);
     bool connectToServer();
     bool isServerConnected() const { return serverConnected; }
 
-    // Configuration endpoint
-    void startConfigServer(uint16_t port = 80);
-    void stopConfigServer();
+    // Load config from SD card
+    void parseDeviceConfig(const DeviceConfig& config);
 
     // Event callbacks
     void onNetworkEvent(NetworkEventCallback callback) { eventCallback = callback; }
@@ -53,11 +52,7 @@ private:
 
     // HTTP helpers
     bool sendHttpPost(const char* endpoint, const char* jsonPayload);
-    void buildAuthHeaders();
     void parseResponseCommand(const char* jsonStr);
-
-    // Helper methods
-    void parseDeviceConfig(const JsonDocument& doc);
 
     // Members
     bool initialized;
@@ -68,17 +63,16 @@ private:
     char roomName[MAX_ROOM_NAME_LENGTH];
     char supabaseUrl[256];
     char supabaseFunctionsUrl[256];
+    char ssidBuffer[64];
 
     // WiFi & Server
     WiFiManager* wifiManager;
-    AsyncWebServer* configServer;
     unsigned long lastConnectionAttempt;
     unsigned long lastHeartbeatTime;
     int connectionRetries;
 
     // Configuration
     bool wifiSetupMode;
-    bool configServerRunning;
 
     // Callbacks
     NetworkEventCallback eventCallback;

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include "config.h"
-#include <Adafruit_SSD1306.h>
+#include <SSD1306Wire.h>
 
 class DisplayHandler {
 public:
@@ -28,6 +28,10 @@ public:
     void showOfflineScreen();
     void showFirmwareUpdateScreen(int progress);
     void showStatsScreen(int checkinCount);
+    void showProgramModeScreen(const char* roomName);
+    void showProgramProcessingScreen();
+    void showProgramSuccessScreen(const char* cardUid);
+    void showProgramErrorScreen(const char* errorMsg);
 
     // Status accessors
     bool isReady() const { return initialized; }
@@ -37,29 +41,18 @@ private:
     // Helper methods
     void clearDisplay();
     void updateDisplay();
-    void drawCenteredText(int y, const char* text, int size = 1);
-    void drawRightAlignedText(int x, int y, const char* text, int size = 1);
-    void drawLogo();
-    void drawWiFiSignal(int rssi);
-    void drawBattery();
+    void drawCenteredText(int y, const char* text, int fontSize);
+    void drawProgressBar(int y, int percent);
     void drawCheckmark();
     void drawXMark();
 
-    // Animation helpers
-    void drawProgressBar(int y, int percent);
-    void drawSpinner(int x, int y, int frame);
-
     // Members
-    Adafruit_SSD1306* display;
+    SSD1306Wire* display;
     bool initialized;
     char lastError[64];
     char currentScreen[32];
     unsigned long lastUpdateTime;
     int animationFrame;
-    bool animationDirection;
-
-    // Animation states
-    int breathingBrightness;
     int spinnerFrame;
     unsigned long lastAnimationUpdate;
 };

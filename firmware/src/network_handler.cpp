@@ -5,12 +5,10 @@ NetworkHandler::NetworkHandler()
     : initialized(false),
       serverConnected(false),
       wifiManager(nullptr),
-      configServer(nullptr),
       lastConnectionAttempt(0),
       lastHeartbeatTime(0),
       connectionRetries(0),
       wifiSetupMode(false),
-      configServerRunning(false),
       eventCallback(nullptr) {
     memset(lastError, 0, 64);
     memset(deviceId, 0, MAX_DEVICE_ID_LENGTH);
@@ -18,53 +16,68 @@ NetworkHandler::NetworkHandler()
     memset(roomName, 0, MAX_ROOM_NAME_LENGTH);
     memset(supabaseUrl, 0, 256);
     memset(supabaseFunctionsUrl, 0, 256);
+    memset(ssidBuffer, 0, 64);
 }
 
 NetworkHandler::~NetworkHandler() {
-    stopConfigServer();
     if (wifiManager) delete wifiManager;
-    if (configServer) delete configServer;
 }
 
 void NetworkHandler::init() {
-    Serial.println("[NetworkHandler] Initializing Supabase Edge Functions client...");
+    Serial.println("[NetworkHandler] Initializing...");
 
-    // Get device configuration (will be overridden by SD card config)
     strncpy(deviceId, DEVICE_ID, MAX_DEVICE_ID_LENGTH - 1);
     strncpy(supabaseUrl, SUPABASE_URL, 255);
     strncpy(supabaseFunctionsUrl, SUPABASE_FUNCTIONS_URL, 255);
 
-    // WiFi setup
     wifiManager = new WiFiManager();
-    wifiManager->setConnectTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
-    wifiManager->setConfigPortalTimeout(600);
+    wifiManager->setConnectTimeout(15);
+    wifiManager->setConfigPortalTimeout(180);
+    wifiManager->setDebugOutput(true);
 
     initialized = true;
+    wifiSetupMode = false;
     Serial.println("[NetworkHandler] Initialization complete");
 }
 
 void NetworkHandler::update() {
-    if (!initialized || !isWiFiConnected()) return;
+    if (!initialized) return;
 
-    // HTTP-based polling doesn't require continuous update loop
-    // Heartbeat is sent on demand or by timer in main application
+    if (isWiFiConnected() && !serverConnected) {
+        handleWiFiConnected();
+    }
+}
+
+const char* NetworkHandler::getWiFiSSIDStr() {
+    String s = WiFi.SSID();
+    strncpy(ssidBuffer, s.c_str(), 63);
+    return ssidBuffer;
 }
 
 void NetworkHandler::startWiFiManager() {
     if (!wifiManager) return;
+    if (wifiSetupMode) return;
+    wifiSetupMode = true;
 
     Serial.println("[NetworkHandler] Starting WiFi Manager...");
 
     char apName[32];
-    snprintf(apName, 31, "%s-%04X", WIFI_MANAGER_AP_NAME, ESP.getEfuseMac() & 0xFFFF);
+    snprintf(apName, 31, "%s-%04X", WIFI_MANAGER_AP_NAME, (uint16_t)(ESP.getEfuseMac() & 0xFFFF));
+    Serial.printf("[NetworkHandler] AP name: %s\n", apName);
 
-    wifiManager->autoConnect(apName);
+    // autoConnect tries saved credentials first, then opens portal if they fail
+    bool connected = wifiManager->autoConnect(apName);
 
-    if (isWiFiConnected()) {
-        Serial.printf("[NetworkHandler] WiFi connected to %s\n", getWiFiSSID());
+    wifiSetupMode = false;
+
+    if (connected && isWiFiConnected()) {
+        Serial.println("[NetworkHandler] WiFi connected!");
+        Serial.printf("[NetworkHandler] SSID: %s\n", getWiFiSSIDStr());
+        Serial.printf("[NetworkHandler] IP: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("[NetworkHandler] RSSI: %d dBm\n", getWiFiSignal());
         handleWiFiConnected();
     } else {
-        Serial.println("[NetworkHandler] WiFi connection failed");
+        Serial.println("[NetworkHandler] WiFi connection failed or portal timed out");
         strncpy(lastError, "WiFi Connection Failed", 63);
     }
 }
@@ -89,20 +102,17 @@ bool NetworkHandler::connectToWiFi(const char* ssid, const char* password) {
     }
 }
 
-bool NetworkHandler::sendCardTap(const char* deviceId, uint8_t* uid, uint8_t uidLength) {
+bool NetworkHandler::sendCardTap(const char* devId, uint8_t* uid, uint8_t uidLength) {
     if (!isWiFiConnected()) {
-        Serial.println("[NetworkHandler] Not connected to WiFi, cannot send card tap");
+        Serial.println("[NetworkHandler] Not connected, cannot send card tap");
         return false;
     }
 
-    Serial.println("[NetworkHandler] Sending card tap to Supabase Edge Function");
+    Serial.println("[NetworkHandler] Sending card tap...");
 
-    // Build JSON payload for Supabase Edge Function
     StaticJsonDocument<256> doc;
-    doc["device_id"] = this->deviceId;  // Use stored device ID
-    doc["card_uid"] = "";  // Will fill with hex string below
+    doc["device_id"] = this->deviceId;
 
-    // Convert UID to hex string
     char uidStr[32];
     for (uint8_t i = 0; i < uidLength; i++) {
         snprintf(uidStr + (i * 2), 3, "%02X", uid[i]);
@@ -110,32 +120,50 @@ bool NetworkHandler::sendCardTap(const char* deviceId, uint8_t* uid, uint8_t uid
     doc["card_uid"] = uidStr;
     doc["timestamp"] = millis() / 1000;
 
-    // Serialize to string
     String jsonStr;
     serializeJson(doc, jsonStr);
 
     return sendHttpPost(DEVICE_TAP_ENDPOINT, jsonStr.c_str());
 }
 
-bool NetworkHandler::sendHeartbeat(const char* deviceId, const char* firmwareVersion) {
+bool NetworkHandler::sendProgramWristband(const char* devId, uint8_t* uid, uint8_t uidLength) {
     if (!isWiFiConnected()) {
+        Serial.println("[NetworkHandler] Not connected, cannot program wristband");
         return false;
     }
+
+    Serial.println("[NetworkHandler] Sending program wristband...");
+
+    StaticJsonDocument<256> doc;
+    doc["device_id"] = this->deviceId;
+
+    char uidStr[32];
+    for (uint8_t i = 0; i < uidLength; i++) {
+        snprintf(uidStr + (i * 2), 3, "%02X", uid[i]);
+    }
+    doc["card_uid"] = uidStr;
+
+    String jsonStr;
+    serializeJson(doc, jsonStr);
+
+    return sendHttpPost(DEVICE_PROGRAM_WRISTBAND_ENDPOINT, jsonStr.c_str());
+}
+
+bool NetworkHandler::sendHeartbeat(const char* devId, const char* firmwareVersion) {
+    if (!isWiFiConnected()) return false;
 
     unsigned long now = millis();
     lastHeartbeatTime = now;
 
-    Serial.println("[NetworkHandler] Sending heartbeat to Supabase Edge Function");
+    Serial.println("[NetworkHandler] Sending heartbeat...");
 
-    // Build JSON payload for Supabase Edge Function
     StaticJsonDocument<256> doc;
-    doc["device_id"] = this->deviceId;  // Use stored device ID
+    doc["device_id"] = this->deviceId;
     doc["firmware_version"] = firmwareVersion;
     doc["free_heap"] = ESP.getFreeHeap();
     doc["wifi_rssi"] = getWiFiSignal();
     doc["uptime"] = now / 1000;
 
-    // Serialize to string
     String jsonStr;
     serializeJson(doc, jsonStr);
 
@@ -145,15 +173,13 @@ bool NetworkHandler::sendHeartbeat(const char* deviceId, const char* firmwareVer
 bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload) {
     HTTPClient http;
 
-    // Build full Supabase Edge Function URL
     String url = String(supabaseFunctionsUrl) + endpoint;
 
-    Serial.printf("[NetworkHandler] POST to %s\n", url.c_str());
-    Serial.printf("[NetworkHandler] Payload: %s\n", jsonPayload);
+    Serial.printf("[NetworkHandler] POST %s\n", url.c_str());
 
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader(API_KEY_HEADER, apiKey);  // "x-device-api-key" header
+    http.addHeader(API_KEY_HEADER, apiKey);
     http.setTimeout(HTTP_TIMEOUT_MS);
 
     int httpCode = http.POST(jsonPayload);
@@ -161,19 +187,20 @@ bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload)
     if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_CREATED) {
         Serial.printf("[NetworkHandler] POST success: %d\n", httpCode);
         String response = http.getString();
-
         Serial.printf("[NetworkHandler] Response: %s\n", response.c_str());
 
-        // Parse response for attendance result and commands
         DynamicJsonDocument responseDoc(512);
         DeserializationError error = deserializeJson(responseDoc, response);
         if (!error) {
-            // Process response (may contain camper name, status, or emergency commands)
             parseResponseCommand(response.c_str());
 
-            if (eventCallback && responseDoc.containsKey("status")) {
-                const char* status = responseDoc["status"];
-                eventCallback("ATTENDANCE_RESULT", status);
+            if (eventCallback && responseDoc.containsKey("action")) {
+                const char* action = responseDoc["action"];
+                const char* camperName = responseDoc["camper_name"] | "Unknown";
+
+                if (eventCallback) {
+                    eventCallback("ATTENDANCE_RESULT", response.c_str());
+                }
             }
         }
 
@@ -187,23 +214,12 @@ bool NetworkHandler::sendHttpPost(const char* endpoint, const char* jsonPayload)
     }
 }
 
-void NetworkHandler::buildAuthHeaders() {
-    // API key is loaded from config.json on SD card during initialization
-    // This is called to refresh headers if needed
-    Serial.printf("[NetworkHandler] Using API key: %s\n", apiKey);
-}
-
 void NetworkHandler::parseResponseCommand(const char* jsonStr) {
-    // Parse response for emergency commands or other server-sent directives
     DynamicJsonDocument doc(512);
     DeserializationError error = deserializeJson(doc, jsonStr);
 
-    if (error) {
-        Serial.printf("[NetworkHandler] Failed to parse response: %s\n", error.c_str());
-        return;
-    }
+    if (error) return;
 
-    // Check for emergency command
     if (doc.containsKey("emergency")) {
         const char* emergencyType = doc["emergency"];
         if (eventCallback) {
@@ -211,7 +227,6 @@ void NetworkHandler::parseResponseCommand(const char* jsonStr) {
         }
     }
 
-    // Check for firmware update command
     if (doc.containsKey("firmware_update")) {
         if (eventCallback) {
             eventCallback("FIRMWARE_UPDATE", "");
@@ -220,12 +235,9 @@ void NetworkHandler::parseResponseCommand(const char* jsonStr) {
 }
 
 bool NetworkHandler::connectToServer() {
-    if (!isWiFiConnected()) {
-        return false;
-    }
+    if (!isWiFiConnected()) return false;
 
-    Serial.println("[NetworkHandler] Server connection established (HTTP polling mode)");
-
+    Serial.println("[NetworkHandler] Server connection established (HTTP mode)");
     serverConnected = true;
 
     if (eventCallback) {
@@ -235,62 +247,14 @@ bool NetworkHandler::connectToServer() {
     return true;
 }
 
-
-void NetworkHandler::startConfigServer(uint16_t port) {
-    if (configServerRunning || !configServer) return;
-
-    Serial.printf("[NetworkHandler] Starting config server on port %d\n", port);
-
-    configServer = new AsyncWebServer(port);
-
-    // Configuration endpoint
-    configServer->on("/config", HTTP_GET, [this](AsyncServerRequest* request) {
-        Serial.println("[NetworkHandler] Config request received");
-
-        StaticJsonDocument<512> doc;
-        doc["device_id"] = deviceId;
-        doc["room_name"] = roomName;
-        doc["wifi_ssid"] = WiFi.SSID();
-        doc["wifi_rssi"] = WiFi.RSSI();
-        doc["firmware_version"] = FIRMWARE_VERSION;
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    // Configuration update endpoint
-    configServer->on("/config", HTTP_POST, [this](AsyncServerRequest* request) {
-        // Handle config update
-        request->send(200, "application/json", "{\"status\": \"ok\"}");
-    });
-
-    configServer->begin();
-    configServerRunning = true;
-}
-
-void NetworkHandler::stopConfigServer() {
-    if (configServer) {
-        configServer->end();
-        configServerRunning = false;
-    }
-}
-
 void NetworkHandler::handleWiFiConnected() {
     Serial.println("[NetworkHandler] WiFi connected");
-    Serial.printf("[NetworkHandler] SSID: %s\n", getWiFiSSID());
-    Serial.printf("[NetworkHandler] IP: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("[NetworkHandler] RSSI: %d\n", getWiFiSignal());
 
     if (eventCallback) {
-        eventCallback("WIFI_CONNECTED", WiFi.SSID().c_str());
+        eventCallback("WIFI_CONNECTED", getWiFiSSIDStr());
     }
 
-    // Try to connect to server
     connectToServer();
-
-    // Start config server
-    startConfigServer(80);
 }
 
 void NetworkHandler::handleWiFiDisconnected() {
@@ -300,19 +264,23 @@ void NetworkHandler::handleWiFiDisconnected() {
     if (eventCallback) {
         eventCallback("WIFI_DISCONNECTED", "");
     }
-
-    stopConfigServer();
 }
 
-
-void NetworkHandler::parseDeviceConfig(const JsonDocument& doc) {
-    if (doc.containsKey("device_id")) {
-        strncpy(deviceId, doc["device_id"], MAX_DEVICE_ID_LENGTH - 1);
+void NetworkHandler::parseDeviceConfig(const DeviceConfig& config) {
+    if (strlen(config.device_id) > 0) {
+        strncpy(deviceId, config.device_id, MAX_DEVICE_ID_LENGTH - 1);
+        Serial.printf("[NetworkHandler] Device ID: %s\n", deviceId);
     }
-    if (doc.containsKey("room_name")) {
-        strncpy(roomName, doc["room_name"], MAX_ROOM_NAME_LENGTH - 1);
+    if (strlen(config.api_key) > 0) {
+        strncpy(apiKey, config.api_key, MAX_API_KEY_LENGTH - 1);
+        Serial.printf("[NetworkHandler] API key loaded (%.8s...)\n", apiKey);
     }
-    if (doc.containsKey("api_key")) {
-        strncpy(apiKey, doc["api_key"], MAX_API_KEY_LENGTH - 1);
+    if (strlen(config.location_name) > 0) {
+        strncpy(roomName, config.location_name, MAX_ROOM_NAME_LENGTH - 1);
+    }
+    if (strlen(config.supabase_url) > 0) {
+        strncpy(supabaseUrl, config.supabase_url, 255);
+        snprintf(supabaseFunctionsUrl, 255, "%s/functions/v1", config.supabase_url);
+        Serial.printf("[NetworkHandler] Supabase URL: %s\n", supabaseUrl);
     }
 }

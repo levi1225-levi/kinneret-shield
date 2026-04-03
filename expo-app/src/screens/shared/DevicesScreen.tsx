@@ -41,13 +41,21 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
   const [hasMorePages, setHasMorePages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
+  // Build location lookup from device data - in real mode devices have locations relationship
   const roomLookup = React.useMemo(() => {
     const map: Record<string, string> = {};
-    MOCK_ROOMS.forEach((r) => {
-      map[r.id] = r.name;
-    });
+
+    if (isDemoMode) {
+      // In demo mode, use mock rooms
+      MOCK_ROOMS.forEach((r) => {
+        map[r.id] = r.name;
+      });
+    }
+    // In real mode, device location names come from the locations relationship
+    // when the API returns devices with locations(name) selected
+
     return map;
-  }, []);
+  }, [isDemoMode]);
 
   const loadDevices = useCallback(
     async (pageNum: number = 1, append: boolean = false) => {
@@ -137,6 +145,15 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
   const renderDeviceItem = ({ item }: { item: Device }) => {
     const statusColor = getStatusColor(item.status);
 
+    // Get location name from device relationship (real API) or room lookup (demo)
+    const getLocationName = (): string => {
+      if (isDemoMode) {
+        return roomLookup[item.room_id] || 'Unassigned';
+      }
+      // In real mode, the device has a locations relationship when queried with locations(name)
+      return (item as any).locations?.name || 'Unassigned';
+    };
+
     return (
       <Card style={styles.deviceCard}>
         <View style={styles.deviceHeader}>
@@ -170,7 +187,7 @@ export const DevicesScreen: React.FC<DevicesScreenProps> = ({ navigation }) => {
 
           <View style={styles.infoRow}>
             <Text style={styles.label}>Location</Text>
-            <Text style={styles.value}>{roomLookup[item.room_id] || item.room_id || 'Unassigned'}</Text>
+            <Text style={styles.value}>{getLocationName()}</Text>
           </View>
         </View>
       </Card>

@@ -64,6 +64,23 @@ void onNetworkEvent(const char* event, const char* data) {
             bool success = strcmp(data, "success") == 0;
             stateMachine->onAttendanceProcessed(success, "Student Name", "checked in");
         }
+    } else if (strcmp(event, "WRISTBAND_PROGRAMMED") == 0) {
+        if (stateMachine) {
+            // Parse JSON response to get success status and UID
+            // Expected format: {"success": true, "card_uid": "AABBCCDD", "message": "..."}
+            DynamicJsonDocument doc(256);
+            DeserializationError error = deserializeJson(doc, data);
+
+            if (!error && doc.containsKey("success")) {
+                bool success = doc["success"];
+                const char* cardUid = doc.containsKey("card_uid") ? doc["card_uid"].as<const char*>() : "";
+                const char* message = doc.containsKey("message") ? doc["message"].as<const char*>() : "";
+                stateMachine->onWristbandProgrammed(success, cardUid, message);
+            } else {
+                // Default to failure if we can't parse
+                stateMachine->onWristbandProgrammed(false, "", "Parse error");
+            }
+        }
     }
 }
 
@@ -88,13 +105,14 @@ void onOTAComplete(bool success) {
 void setup() {
     // Initialize serial for debugging
     Serial.begin(115200);
-    delay(1000);
+    delay(2000);  // Give serial monitor time to connect
 
     Serial.println("\n\n");
     Serial.println("================================================");
     Serial.println("  KINNERET SHIELD - NFC Check-in Device");
     Serial.printf("  Firmware Version: %s\n", FIRMWARE_VERSION);
     Serial.printf("  Build Date: %s\n", FIRMWARE_BUILD_DATE);
+    Serial.printf("  Free heap: %u bytes\n", ESP.getFreeHeap());
     Serial.println("================================================\n");
 
     // Create and initialize state machine
@@ -275,7 +293,7 @@ void printSystemStatus() {
         if (net) {
             Serial.printf("WiFi connected: %s\n", net->isWiFiConnected() ? "yes" : "no");
             if (net->isWiFiConnected()) {
-                Serial.printf("  SSID: %s\n", net->getWiFiSSID());
+                Serial.printf("  SSID: %s\n", net->getWiFiSSIDStr());
                 Serial.printf("  RSSI: %d dBm\n", net->getWiFiSignal());
             }
             Serial.printf("Server connected: %s\n", net->isServerConnected() ? "yes" : "no");
